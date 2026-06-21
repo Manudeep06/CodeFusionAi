@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { auth, logout } from "../firebase/firebase";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+
 
 // Clean static Dashboard Card Component - minimalist developer theme
 function DashboardCard({ children, className = "" }) {
@@ -14,7 +16,7 @@ function DashboardCard({ children, className = "" }) {
 }
 
 function Dashboard() {
-  const user = auth.currentUser;
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [roomId, setRoomId] = useState("");

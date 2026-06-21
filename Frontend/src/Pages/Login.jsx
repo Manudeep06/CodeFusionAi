@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   signInWithGoogle,
   loginUser,
   registerUser,
 } from "../firebase/firebase";
+import { useAuth } from "../context/AuthContext";
+import Background3D from "./Background3D";
 
 function Login() {
+  const { user } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,6 +19,12 @@ function Login() {
   const [successMsg, setSuccessMsg] = useState("");
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user) {
+      navigate("/dashboard");
+    }
+  }, [user, navigate]);
 
   const handleGoogleLogin = async () => {
     setIsLoading(true);
@@ -61,93 +70,154 @@ function Login() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-slate-950 bg-grid-pattern bg-radial-glow px-4 py-12 overflow-hidden">
+    <div className="relative min-h-screen flex items-center justify-center bg-slate-950 bg-grid-pattern bg-radial-glow px-4 py-16 overflow-hidden">
+      {/* 3D Interactive Canvas Background */}
+      <Background3D />
+
+      {/* Brand Name/Logo at top-left of page */}
+      <div className="absolute top-6 left-6 lg:top-8 lg:left-12 flex items-center space-x-2.5 z-20 select-none">
+        <div className="bg-gradient-to-tr from-purple-600 to-blue-500 p-2 rounded-xl shadow-lg shadow-purple-500/25">
+          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <span className="text-xl font-bold bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent tracking-tight font-sans">
+          CodeFusionAI
+        </span>
+      </div>
+
       {/* Decorative Blur Orbs */}
       <div className="absolute top-1/4 -left-32 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl animate-float"></div>
       <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl animate-float" style={{ animationDelay: '-3s' }}></div>
 
-      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-12 items-center z-10">
-        {/* Left Column - macOS IDE Preview Panel (Hidden on mobile) */}
+      <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-12 items-center z-10 pt-12 lg:pt-0">
+        {/* Left Column - Collaborative Developer Activity Dashboard */}
         <div className="hidden lg:flex lg:col-span-6 flex-col justify-center animate-float">
-          {/* Simulated IDE Container */}
-          <div className="w-full bg-[#0d1117]/80 backdrop-blur-md border border-slate-800 rounded-xl overflow-hidden shadow-2xl shadow-black/80 font-mono text-xs">
-            {/* macOS Window Title Bar */}
-            <div className="bg-slate-950 border-b border-slate-900 px-4 py-3 flex items-center justify-between">
-              <div className="flex space-x-2">
-                <span className="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
-                <span className="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
-                <span className="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+          {/* Dashboard Container */}
+          <div className="w-full bg-[#0d1117]/80 backdrop-blur-md border border-slate-800 rounded-2xl overflow-hidden shadow-2xl shadow-black/85 font-sans p-6 text-left relative">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80 select-none">
+              <div>
+                <h3 className="text-base font-bold text-slate-100">Collaboration Activity Room</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Real-time sync stream room: cfai-live-react</p>
               </div>
-              <div className="flex items-center space-x-2 bg-[#0d1117] border border-slate-800/80 px-3 py-1 rounded-md text-slate-400 font-semibold select-none text-[11px]">
-                <span className="text-yellow-500 font-extrabold text-[9px] bg-yellow-500/10 px-1 rounded border border-yellow-500/20">JS</span>
-                <span>collaborative-room.js</span>
+              <div className="flex items-center space-x-1 bg-purple-950/60 border border-purple-500/20 px-2.5 py-1 rounded-full text-purple-300 text-[10px] font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse mr-1"></span>
+                LIVE CONNECT
               </div>
-              <div className="w-12"></div> {/* Spacer to center title */}
             </div>
 
-            {/* Code Workspace Editor */}
-            <div className="p-5 overflow-x-auto text-left leading-relaxed select-none">
-              <div className="flex">
-                {/* Line Numbers */}
-                <div className="text-slate-600 text-right pr-4 border-r border-slate-800 select-none w-8 shrink-0">
-                  <div>1</div>
-                  <div>2</div>
-                  <div>3</div>
-                  <div>4</div>
-                  <div>5</div>
-                  <div>6</div>
-                  <div>7</div>
-                  <div>8</div>
-                  <div>9</div>
-                  <div>10</div>
+            {/* HUD Stats Grid */}
+            <div className="grid grid-cols-3 gap-3 mb-6 select-none">
+              <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Sync Latency</div>
+                <div className="text-lg font-bold text-emerald-400 mt-1 font-mono flex items-center">
+                  12ms
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping ml-2 shrink-0"></span>
                 </div>
-
-                {/* Live Highligted JavaScript Code */}
-                <div className="pl-4 whitespace-nowrap overflow-x-auto">
-                  <div>
-                    <span className="code-keyword">import</span> &#123; CodeFusion &#125; <span className="code-keyword">from</span> <span className="code-str">"codefusion-ai"</span>;
+              </div>
+              <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Active Peers</div>
+                <div className="text-lg font-bold text-slate-200 mt-1 flex items-center justify-between">
+                  <span>5</span>
+                  {/* Tiny avatar group */}
+                  <div className="flex -space-x-1 shrink-0">
+                    <div className="w-4.5 h-4.5 rounded-full bg-purple-600 flex items-center justify-center text-[7px] text-white font-bold border border-slate-950 shadow">S</div>
+                    <div className="w-4.5 h-4.5 rounded-full bg-blue-600 flex items-center justify-center text-[7px] text-white font-bold border border-slate-950 shadow">A</div>
                   </div>
-                  <div>
-                    <span className="code-keyword">const</span> editor = <span className="code-keyword">await</span> CodeFusion.<span className="code-func">init</span>();
-                  </div>
-                  <div className="text-slate-600">&nbsp;</div>
-                  <div>
-                    <span className="code-comment">// Connect to real-time sync socket</span>
-                  </div>
-                  <div>
-                    <span className="code-keyword">const</span> room = <span className="code-keyword">await</span> editor.<span className="code-func">joinRoom</span>(<span className="code-str">"cfai-live-react"</span>);
-                  </div>
-                  <div>
-                    room.<span className="code-func">on</span>(<span className="code-str">"sync"</span>, (delta) =&gt; &#123;
-                  </div>
-                  <div>
-                    &nbsp;&nbsp;console.<span className="code-func">log</span>(<span className="code-str">"⚡ Merged remote updates"</span>, delta);
-                  </div>
-                  <div>
-                    &#125;);
-                  </div>
-                  <div className="text-slate-600">&nbsp;</div>
-                  <div>
-                    <span className="code-comment">// Gemini AI powered reviews active</span>
-                    <span className="text-purple-400 font-extrabold ml-1 animate-blink">|</span>
-                  </div>
+                </div>
+              </div>
+              <div className="bg-slate-950/60 border border-slate-800/80 p-3 rounded-xl">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">AI Scan Status</div>
+                <div className="text-lg font-bold text-purple-400 mt-1 font-mono flex items-center">
+                  Clean
+                  <svg className="w-4 h-4 text-purple-400 ml-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
                 </div>
               </div>
             </div>
 
-            {/* Simulated Console Output Panel */}
-            <div className="bg-slate-950/80 border-t border-slate-900 p-4 text-left font-mono">
-              <div className="flex items-center space-x-2 text-slate-500 mb-2 border-b border-slate-900 pb-1.5 select-none">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            {/* Activity Chart Container */}
+            <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between mb-3 select-none">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Sync & Commit Rate</span>
+                <span className="text-[10px] text-slate-500 font-mono">Last 6 Hours</span>
+              </div>
+              <div className="relative w-full h-24">
+                {/* SVG Chart */}
+                <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="chartGlow" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#a855f7" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+                    </linearGradient>
+                    <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#a855f7" />
+                      <stop offset="50%" stopColor="#6366f1" />
+                      <stop offset="100%" stopColor="#06b6d4" />
+                    </linearGradient>
+                  </defs>
+                  {/* Fill Area */}
+                  <path
+                    d="M 0 100 L 0 70 Q 20 40 40 55 T 80 25 L 100 15 L 100 100 Z"
+                    fill="url(#chartGlow)"
+                  />
+                  {/* Line Path */}
+                  <path
+                    d="M 0 70 Q 20 40 40 55 T 80 25 L 100 15"
+                    fill="none"
+                    stroke="url(#lineGrad)"
+                    strokeWidth="1.8"
+                    strokeLinecap="round"
+                  />
+                  {/* Interactive dots */}
+                  <circle cx="40" cy="55" r="2.5" fill="#6366f1" className="animate-pulse" />
+                  <circle cx="100" cy="15" r="2.5" fill="#06b6d4" className="animate-pulse" />
                 </svg>
-                <span className="text-[10px] font-bold uppercase tracking-wider">Console Terminal</span>
+                {/* Floating active label overlay */}
+                <div className="absolute top-1 left-1/3 bg-slate-900 border border-indigo-500/20 px-2 py-0.75 rounded text-[9px] text-slate-300 font-mono shadow-md select-none">
+                  ⚡ 84 commits/min
+                </div>
               </div>
-              <div className="space-y-1 text-slate-400 text-[11px] selection:bg-slate-800">
-                <div className="text-slate-500">&gt; CodeFusionAI Client initialized (v1.0.0)</div>
-                <div className="text-emerald-400">✔ Connection established to sync-server-5.local</div>
-                <div>&gt; Pair-programming active (2 peers connected)</div>
-                <div className="text-purple-400">✨ Gemini AI Code Reviewer: Online & listening</div>
+            </div>
+
+            {/* Collaboration Event Stream */}
+            <div>
+              <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-3 select-none">Recent Room Events</h4>
+              <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                
+                {/* Event 1 */}
+                <div className="flex items-start space-x-3 text-xs border-l border-slate-800/80 pl-3 relative">
+                  <span className="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-purple-500 border border-slate-900 shrink-0"></span>
+                  <div className="w-5 h-5 rounded-full bg-purple-600/30 border border-purple-500/30 flex items-center justify-center text-[9px] font-bold text-purple-300 shrink-0 select-none">AM</div>
+                  <div>
+                    <div className="text-slate-300"><span className="font-semibold text-slate-200">Alex Mitchell</span> joined the workspace sync.</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5">3 mins ago • room: cfai-live-react</div>
+                  </div>
+                </div>
+
+                {/* Event 2 */}
+                <div className="flex items-start space-x-3 text-xs border-l border-slate-800/80 pl-3 relative">
+                  <span className="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-purple-500 border border-slate-900 shrink-0"></span>
+                  <div className="w-5 h-5 rounded-full bg-purple-500/30 border border-purple-500/30 flex items-center justify-center text-[9px] font-bold text-purple-300 shrink-0 select-none">✨</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-slate-300"><span className="font-semibold text-purple-400">Gemini AI</span> optimized loop in <code className="text-[10px] bg-slate-950 px-1 py-0.5 rounded text-purple-300 font-mono">App.jsx</code></div>
+                    <div className="text-[9px] text-slate-500 mt-0.5">6 mins ago • 98% confidence code review match</div>
+                  </div>
+                </div>
+
+                {/* Event 3 */}
+                <div className="flex items-start space-x-3 text-xs border-l border-slate-800/80 pl-3 relative">
+                  <span className="absolute -left-[4.5px] top-1.5 w-2 h-2 rounded-full bg-purple-500 border border-slate-900 shrink-0"></span>
+                  <div className="w-5 h-5 rounded-full bg-blue-600/30 border border-blue-500/30 flex items-center justify-center text-[9px] font-bold text-blue-300 shrink-0 select-none">SM</div>
+                  <div>
+                    <div className="text-slate-300"><span className="font-semibold text-slate-200">Sarah Mercer</span> pushed local edits to repository.</div>
+                    <div className="text-[9px] text-slate-500 mt-0.5">14 mins ago • master branch</div>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>
@@ -155,28 +225,11 @@ function Login() {
 
         {/* Right Column - Clean Static Form Card */}
         <div className="lg:col-span-6 flex flex-col items-center justify-center">
-          {/* Brand Header */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center space-x-3 mb-3">
-              <div className="bg-gradient-to-tr from-purple-600 to-blue-500 p-2.5 rounded-xl shadow-lg shadow-purple-500/20">
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <span className="text-3xl font-extrabold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent tracking-tight font-sans">
-                CodeFusionAI
-              </span>
-            </div>
-            <p className="text-slate-400 text-sm font-medium">
-              AI Collaborative Programming Environment
-            </p>
-          </div>
-
           {/* Login Card Form */}
-          <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-xl border border-slate-850 hover:border-slate-700/80 hover:shadow-purple-950/5 rounded-2xl p-8 shadow-2xl shadow-black/80 hover:-translate-y-1 transition-all duration-300">
+          <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-xl border border-slate-800 hover:border-slate-700/80 rounded-2xl p-8 shadow-2xl shadow-black/90 transition-all duration-300">
             
             {/* Premium Pill Mode Switcher */}
-            <div className="flex bg-slate-950/80 p-1.5 rounded-xl border border-slate-850 mb-8 select-none">
+            <div className="flex bg-slate-950/80 p-1.5 rounded-xl border border-slate-800 mb-8 select-none">
               <button
                 type="button"
                 onClick={() => {
@@ -184,7 +237,7 @@ function Login() {
                   setErrorMsg("");
                   setSuccessMsg("");
                 }}
-                className={`flex-1 text-center py-2 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer ${
+                className={`flex-1 text-center py-2 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus-visible:ring-2 focus-visible:ring-purple-500/40 ${
                   !isRegister
                     ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow shadow-purple-950/50"
                     : "text-slate-400 hover:text-slate-200"
@@ -199,7 +252,7 @@ function Login() {
                   setErrorMsg("");
                   setSuccessMsg("");
                 }}
-                className={`flex-1 text-center py-2 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer ${
+                className={`flex-1 text-center py-2 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus-visible:ring-2 focus-visible:ring-purple-500/40 ${
                   isRegister
                     ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow shadow-purple-950/50"
                     : "text-slate-400 hover:text-slate-200"
@@ -251,7 +304,7 @@ function Login() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={isLoading}
-                    className="w-full bg-slate-955 border border-slate-800 rounded-xl pl-11 pr-4 py-3 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-950 transition duration-200 text-sm font-sans"
+                    className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-11 pr-4 py-3 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-purple-500/80 focus:ring-2 focus:ring-purple-500/20 transition duration-200 text-sm font-sans"
                     required
                   />
                 </div>
@@ -275,7 +328,7 @@ function Login() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isLoading}
-                    className="w-full bg-slate-955 border border-slate-800 rounded-xl pl-11 pr-12 py-3 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-950 transition duration-200 text-sm font-sans"
+                    className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-11 pr-12 py-3 text-slate-200 placeholder-slate-600 focus:outline-none focus:border-purple-500/80 focus:ring-2 focus:ring-purple-500/20 transition duration-200 text-sm font-sans"
                     required
                   />
                   <button
@@ -301,7 +354,7 @@ function Login() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex items-center justify-center py-3 px-4 rounded-xl text-white font-semibold text-sm bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 active:scale-[0.98] transition-all duration-200 cursor-pointer shadow-lg shadow-purple-900/20 disabled:opacity-50 disabled:pointer-events-none"
+                className="w-full flex items-center justify-center py-3 px-4 rounded-xl text-white font-semibold text-sm bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:ring-offset-1 focus:ring-offset-slate-950 active:scale-[0.98] transition-all duration-200 cursor-pointer shadow-lg shadow-purple-900/20 disabled:opacity-50 disabled:pointer-events-none"
               >
                 {isLoading ? (
                   <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -328,7 +381,7 @@ function Login() {
             <button
               onClick={handleGoogleLogin}
               disabled={isLoading}
-              className="w-full flex items-center justify-center py-3 px-4 rounded-xl text-slate-300 font-semibold text-sm bg-slate-950 border border-slate-800 hover:bg-slate-900/60 hover:text-slate-100 hover:border-slate-700 active:scale-[0.98] transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+              className="w-full flex items-center justify-center py-3 px-4 rounded-xl text-slate-300 font-semibold text-sm bg-slate-950 border border-slate-800 hover:bg-slate-900/60 hover:text-slate-100 hover:border-slate-700 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-purple-500/30 focus-visible:ring-2 focus-visible:ring-purple-500/40 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
             >
               <svg className="w-5 h-5 mr-3 shrink-0" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
