@@ -1,0 +1,125 @@
+AI-Powered Real-Time Collaborative Code Editor
+
+FUNCTIONAL REQUIREMENTS
+
+1. User Authentication
+
+* The system shall allow users to sign in using Google Authentication through Firebase.
+* The system shall maintain authenticated user sessions.
+* The system shall allow users to securely log out.
+* The system shall restrict access to authorized users only.
+
+2. Room Management
+
+* The system shall allow users to create a collaborative coding room.
+* The system shall generate a unique Room ID for each room.
+* The system shall allow users to join an existing room using the Room ID.
+* The system shall display the list of active participants in a room.
+* The system shall allow users to leave a room.
+
+3. Real-Time Collaborative Code Editor
+
+* The system shall provide a shared code editor for all room participants.
+* The system shall synchronize code changes in real time among all connected users.
+* The system shall display updates instantly without requiring page refresh.
+* The system shall support multiple programming languages.
+* The system shall preserve the latest code state during collaboration.
+
+4. Online Code Execution
+
+* The system shall allow users to select a programming language.
+* The system shall allow users to provide custom input for program execution.
+* The system shall compile and execute code using the Judge0 API.
+* The system shall display program output and compilation errors.
+* The system shall provide execution results in real time.
+
+5. AI Code Review
+
+* The system shall allow users to submit code for AI-based analysis.
+* The system shall identify potential bugs and coding errors.
+* The system shall suggest code optimizations and improvements.
+* The system shall analyze time complexity and space complexity.
+* The system shall recommend coding best practices.
+
+6. AI Chat Assistant
+
+* The system shall allow users to ask coding-related questions.
+* The system shall explain code snippets provided by users.
+* The system shall suggest bug fixes and optimizations.
+* The system shall generate sample test cases when requested.
+* The system shall provide programming assistance using the Gemini API.
+
+7. Code History Management
+
+* The system shall save code snapshots periodically.
+* The system shall maintain version history for each room.
+* The system shall allow users to restore previous code versions.
+* The system shall allow users to compare changes between versions.
+
+8. User Interface
+
+* The system shall provide a responsive and user-friendly interface.
+* The system shall display active users and room information.
+* The system shall provide notifications for important actions.
+* The system shall support desktop and mobile devices.
+
+NON-FUNCTIONAL REQUIREMENTS
+
+1. Performance
+
+* The system shall synchronize code changes within one second.
+* The system shall support real-time collaboration with minimal latency.
+* The system shall execute code efficiently and return results promptly.
+
+2. Scalability
+
+* The system shall support multiple collaborative rooms simultaneously.
+* The system shall handle increasing numbers of users without significant performance degradation.
+* The system architecture shall support future feature expansion.
+
+3. Security
+
+* The system shall use Firebase Authentication for secure user login.
+* The system shall restrict unauthorized access to protected resources.
+* The system shall secure API keys and sensitive credentials.
+* The system shall use HTTPS for secure communication.
+
+4. Reliability
+
+* The system shall maintain consistent synchronization among all connected users.
+* The system shall prevent accidental loss of code during collaboration.
+* The system shall recover gracefully from temporary network failures.
+
+5. Availability
+
+* The system shall be available 24/7 except during scheduled maintenance.
+* The system shall provide continuous access to collaborative sessions.
+
+6. Usability
+
+* The system shall provide an intuitive and easy-to-use interface.
+* The system shall minimize the learning curve for new users.
+* The system shall provide meaningful error and success messages.
+
+7. Maintainability
+
+* The system shall follow a modular architecture.
+* The system shall use clean and well-documented code.
+* The system shall allow easy debugging and future enhancements.
+
+8. Compatibility
+
+* The system shall support modern web browsers such as Google Chrome, Mozilla Firefox, Microsoft Edge, and Safari.
+* The system shall be accessible on Windows, Linux, and macOS platforms.
+
+9. Data Integrity
+
+* The system shall ensure accurate synchronization of code changes across all users.
+* The system shall store code history without corruption or data loss.
+* The system shall maintain consistency of room and user information.
+
+10. AI Service Reliability
+
+* The system shall handle AI service failures gracefully.
+* The system shall display appropriate error messages when AI responses are unavailable.
+* The system shall ensure uninterrupted collaboration features even if AI services are temporarily unavailable.

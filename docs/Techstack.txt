@@ -1,0 +1,27 @@
+## Technology Stack
+
+### Frontend
+
+* **React.js** – Builds a dynamic and responsive user interface.
+* **Tailwind CSS** – Provides modern and efficient UI styling.
+* **Monaco Editor** – Powers the in-browser code editor (same editor used in VS Code).
+* **Socket.IO Client** – Enables real-time collaboration and synchronization between users.
+* **Firebase Authentication** – Handles secure user login and authentication using Google Sign-In.
+
+### Backend
+
+* **Node.js** – Provides a scalable server-side runtime environment.
+* **Express.js** – Simplifies API development and backend routing.
+* **Socket.IO** – Facilitates real-time bidirectional communication between connected users.
+
+### Database
+
+* **MongoDB Atlas** – Cloud-based NoSQL database for storing user, project, and collaboration data.
+
+### Artificial Intelligence
+
+* **Gemini API** – Provides AI-powered code review, suggestions, bug detection, and code optimization recommendations.
+
+### Code Execution Engine
+
+* **Judge0 API** – Executes code securely in multiple programming languages and returns output in real time.
