@@ -64,14 +64,15 @@ function Background3D() {
       return [x, y, p[2]];
     };
 
-    // Initialize space dust particles (stars)
+    // Initialize space dust particles (stars in a swirling 3D vortex)
     for (let i = 0; i < dustCount; i++) {
+      const radius = 80 + Math.random() * (Math.max(width, height) * 0.95);
+      const angle = Math.random() * Math.PI * 2;
       dust.push({
-        x: (Math.random() - 0.5) * (width * 1.8),
-        y: (Math.random() - 0.5) * (height * 1.8),
-        z: (Math.random() - 0.5) * 500 - 150, // pushed back in space
-        vx: (Math.random() - 0.5) * 0.15,
-        vy: (Math.random() - 0.5) * 0.15,
+        radius: radius,
+        angle: angle,
+        y: (Math.random() - 0.5) * (height * 1.2), // height variance
+        speed: 0.0003 + Math.random() * 0.0006, // slow orbital speed
         size: 0.7 + Math.random() * 1.3,
         colorType: i % 3,
       });
@@ -141,7 +142,7 @@ function Background3D() {
       const cx1 = width / 2 + Math.cos(time * 0.4) * (width * 0.12) + (mouseX - width / 2) * 0.08;
       const cy1 = height / 2 + Math.sin(time * 0.4) * (height * 0.12) + (mouseY - height / 2) * 0.08;
       const grad1 = ctx.createRadialGradient(cx1, cy1, 10, cx1, cy1, Math.max(width, height) * 0.65);
-      grad1.addColorStop(0, "rgba(147, 51, 234, 0.14)"); // Purple
+      grad1.addColorStop(0, "rgba(147, 51, 234, 0.20)"); // Purple (increased opacity)
       grad1.addColorStop(1, "rgba(2, 6, 23, 0)");
       ctx.fillStyle = grad1;
       ctx.fillRect(0, 0, width, height);
@@ -150,9 +151,18 @@ function Background3D() {
       const cx2 = width / 2 - Math.cos(time * 0.3) * (width * 0.18) + (mouseX - width / 2) * 0.08;
       const cy2 = height / 2 - Math.sin(time * 0.3) * (height * 0.18) + (mouseY - height / 2) * 0.08;
       const grad2 = ctx.createRadialGradient(cx2, cy2, 10, cx2, cy2, Math.max(width, height) * 0.6);
-      grad2.addColorStop(0, "rgba(6, 182, 212, 0.07)");  // Cyan
+      grad2.addColorStop(0, "rgba(6, 182, 212, 0.12)");  // Cyan (increased opacity)
       grad2.addColorStop(1, "rgba(2, 6, 23, 0)");
       ctx.fillStyle = grad2;
+      ctx.fillRect(0, 0, width, height);
+
+      // Light Center 3 (Magenta Glow, orbits in a vertical figure-8)
+      const cx3 = width / 2 + Math.sin(time * 0.5) * (width * 0.15) + (mouseX - width / 2) * 0.06;
+      const cy3 = height / 2 + Math.sin(time * 1.0) * (height * 0.08) + (mouseY - height / 2) * 0.06;
+      const grad3 = ctx.createRadialGradient(cx3, cy3, 10, cx3, cy3, Math.max(width, height) * 0.55);
+      grad3.addColorStop(0, "rgba(236, 72, 153, 0.08)");  // Magenta/Rose
+      grad3.addColorStop(1, "rgba(2, 6, 23, 0)");
+      ctx.fillStyle = grad3;
       ctx.fillRect(0, 0, width, height);
 
       // Smooth camera tilt damping
@@ -170,36 +180,53 @@ function Background3D() {
       // 2. Draw Background Space Dust Particles with Twinkles & Flares
       for (let i = 0; i < dust.length; i++) {
         const d = dust[i];
-        d.x += d.vx;
-        d.y += d.vy;
+        
+        // Swirl orbit over time
+        d.angle += d.speed;
 
-        // Wrap boundaries
-        const boundX = width * 0.95;
-        const boundY = height * 0.95;
-        if (Math.abs(d.x) > boundX) d.x = -d.x;
-        if (Math.abs(d.y) > boundY) d.y = -d.y;
+        // Calculate X and Z from polar coordinates
+        const dx = d.radius * Math.cos(d.angle);
+        const dz = d.radius * Math.sin(d.angle);
 
         // Rotate by camera coordinates
-        const rx1 = d.x * cosCamY - d.z * sinCamY;
-        const rz1 = d.x * sinCamY + d.z * cosCamY;
+        const rx1 = dx * cosCamY - dz * sinCamY;
+        const rz1 = dx * sinCamY + dz * cosCamY;
 
         const ry2 = d.y * cosCamX - rz1 * sinCamX;
         const rz2 = d.y * sinCamX + rz1 * cosCamX;
 
         // Project coordinate
-        const scale = focalLength / (focalLength + rz2 + zOffset);
+        const zDepth = focalLength + rz2 + zOffset;
+        if (zDepth <= 50) continue; // Skip if behind or too close to camera to prevent negative/infinite scaling and IndexSizeError on arc()
+        const scale = focalLength / zDepth;
         const px = rx1 * scale + width / 2;
         const py = ry2 * scale + height / 2;
 
-        // Twinkle factor using time and node index
-        const twinkle = Math.sin(time * 2.5 + i) * 0.45 + 0.55;
-
         // Fade using distance scale factor
         const depthFactor = Math.max(0, Math.min(1, (650 - rz2) / 900));
+
+        // Mouse interactive magnetic parting effect (stars slide around mouse)
+        const mdx = px - mouseX;
+        const mdy = py - mouseY;
+        const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+        let offsetX = 0;
+        let offsetY = 0;
+        if (mdist < 200) {
+          const force = (200 - mdist) * 0.16 * depthFactor; // push force based on proximity and depth
+          offsetX = (mdx / (mdist + 0.1)) * force;
+          offsetY = (mdy / (mdist + 0.1)) * force;
+        }
+        
+        const finalPx = px + offsetX;
+        const finalPy = py + offsetY;
+
+        // Twinkle factor using time and node index
+        const twinkle = Math.sin(time * 2.5 + i) * 0.45 + 0.55;
         const opacity = 0.22 * scale * depthFactor * twinkle;
 
         ctx.beginPath();
-        ctx.arc(px, py, d.size * scale, 0, Math.PI * 2);
+        const drawRadius = Math.max(0.1, d.size * scale);
+        ctx.arc(finalPx, finalPy, drawRadius, 0, Math.PI * 2);
 
         if (d.colorType === 0) {
           ctx.fillStyle = `rgba(168, 85, 247, ${opacity})`;
@@ -214,10 +241,10 @@ function Background3D() {
         if (i % 7 === 0 && opacity > 0.16) {
           ctx.beginPath();
           const flare = d.size * scale * 2.2;
-          ctx.moveTo(px - flare, py);
-          ctx.lineTo(px + flare, py);
-          ctx.moveTo(px, py - flare);
-          ctx.lineTo(px, py + flare);
+          ctx.moveTo(finalPx - flare, finalPy);
+          ctx.lineTo(finalPx + flare, finalPy);
+          ctx.moveTo(finalPx, finalPy - flare);
+          ctx.lineTo(finalPx, finalPy + flare);
           
           if (d.colorType === 0) {
             ctx.strokeStyle = `rgba(168, 85, 247, ${opacity * 0.35})`;
@@ -268,7 +295,13 @@ function Background3D() {
         const cy2 = cube.y * cosCamX - cz1 * sinCamX;
         const cz2 = cube.y * sinCamX + cz1 * cosCamX;
 
-        const scaleCenter = focalLength / (focalLength + cz2 + zOffset);
+        const cubeZDepth = focalLength + cz2 + zOffset;
+        if (cubeZDepth <= 80) {
+          cube.projCenter = null;
+          continue; // Skip the cube entirely if it is behind or too close to camera
+        }
+
+        const scaleCenter = focalLength / cubeZDepth;
         const pcx = cx1 * scaleCenter + width / 2;
         const pcy = cy2 * scaleCenter + height / 2;
 
@@ -343,20 +376,40 @@ function Background3D() {
           const dy = cubeA.projCenter.y - cubeB.projCenter.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
 
-          // Connect if within proximity threshold
-          if (dist < 220) {
+          // Connect if within proximity threshold (expanded to 260px for more links)
+          if (dist < 260) {
             const avgZ = (cubeA.projCenter.z + cubeB.projCenter.z) / 2;
             const depthFactor = Math.max(0, Math.min(1, (650 - avgZ) / 1000));
-            const opacity = (1 - dist / 220) * 0.12 * depthFactor;
+            // Increased baseline opacity from 0.12 to 0.28 for better visibility
+            const opacity = (1 - dist / 260) * 0.28 * depthFactor;
 
             ctx.beginPath();
             ctx.moveTo(cubeA.projCenter.x, cubeA.projCenter.y);
             ctx.lineTo(cubeB.projCenter.x, cubeB.projCenter.y);
             
-            // Faint neon indigo links
-            ctx.strokeStyle = `rgba(129, 140, 248, ${opacity})`;
-            ctx.lineWidth = 0.5;
+            // Premium linear gradient links blending the actual colors of the connected cubes
+            const linkGrad = ctx.createLinearGradient(
+              cubeA.projCenter.x, cubeA.projCenter.y,
+              cubeB.projCenter.x, cubeB.projCenter.y
+            );
+            const getColor = (type, op) => {
+              if (type === 0) return `rgba(168, 85, 247, ${op})`; // Purple
+              if (type === 1) return `rgba(59, 130, 246, ${op})`;  // Blue
+              return `rgba(6, 182, 212, ${op})`;                  // Cyan
+            };
+            linkGrad.addColorStop(0, getColor(cubeA.colorType, opacity));
+            linkGrad.addColorStop(1, getColor(cubeB.colorType, opacity));
+
+            ctx.strokeStyle = linkGrad;
+            ctx.lineWidth = 0.8;
+            
+            // Subtle neon glow effect for lines
+            ctx.shadowColor = `rgba(129, 140, 248, ${opacity * 0.5})`;
+            ctx.shadowBlur = 3;
             ctx.stroke();
+            
+            // Reset shadow immediately to prevent slowing down cube faces rendering
+            ctx.shadowBlur = 0;
           }
         }
       }
