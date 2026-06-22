@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { logout } from "../firebase/firebase";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { socket } from "../services/socket";
 
 /* ─── Interactive Parallax Background ─────────────────────────────────────── */
 function InteractiveBg() {
@@ -284,6 +285,21 @@ function Dashboard() {
   const [copied, setCopied]       = useState(false);
   const [isJoining, setIsJoining] = useState(false);
 
+  useEffect(() => {
+  socket.connect();
+
+  socket.on("connect", () => {
+    console.log("Connected:", socket.id);
+  });
+
+  socket.on("welcome", (message) => {
+    console.log(message);
+  });
+
+  return () => {
+    socket.disconnect();
+  };
+}, []);
   const handleLogout = async () => {
     try { await logout(); navigate("/"); }
     catch (e) { console.error(e); }
