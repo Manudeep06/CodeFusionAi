@@ -285,21 +285,46 @@ function Dashboard() {
   const [copied, setCopied]       = useState(false);
   const [isJoining, setIsJoining] = useState(false);
 
-  useEffect(() => {
-  socket.connect();
+ useEffect(() => {
+   socket.connect();
 
-  socket.on("connect", () => {
-    console.log("Connected:", socket.id);
-  });
+   const handleConnect = () => {
+     console.log("Connected:", socket.id);
+   };
 
-  socket.on("welcome", (message) => {
-    console.log(message);
-  });
+   const handleWelcome = (message) => {
+     console.log(message);
+   };
 
-  return () => {
-    socket.disconnect();
-  };
-}, []);
+   const handleRoomCreated = (roomId) => {
+     console.log("Room Created:", roomId);
+   };
+
+   const handleRoomJoined = (roomId) => {
+     console.log("Joined Room:", roomId);
+   };
+
+   const handleUserJoined = (data) => {
+     console.log("New User:", data.userId);
+   };
+
+   socket.on("connect", handleConnect);
+   socket.on("welcome", handleWelcome);
+   socket.on("room-created", handleRoomCreated);
+   socket.on("room-joined", handleRoomJoined);
+   socket.on("user-joined", handleUserJoined);
+
+   return () => {
+     socket.off("connect", handleConnect);
+     socket.off("welcome", handleWelcome);
+     socket.off("room-created", handleRoomCreated);
+     socket.off("room-joined", handleRoomJoined);
+     socket.off("user-joined", handleUserJoined);
+
+     socket.disconnect();
+   };
+ }, []);
+
   const handleLogout = async () => {
     try { await logout(); navigate("/"); }
     catch (e) { console.error(e); }
@@ -307,11 +332,21 @@ function Dashboard() {
 
   const handleCreateRoom = () => {
     const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    const seg = (n) => Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-    setRoomId(`cfai-${seg(4)}-${seg(4)}`);
-    setCopied(false);
-  };
 
+    const seg = (n) =>
+      Array.from(
+        { length: n },
+        () => chars[Math.floor(Math.random() * chars.length)],
+      ).join("");
+
+    const newRoomId = `cfai-${seg(4)}-${seg(4)}`;
+
+    setRoomId(newRoomId);
+
+    socket.emit("create-room", newRoomId);
+
+    navigate(`/room/${newRoomId}`);
+  };
   const handleCopyRoomId = () => {
     if (!roomId) return;
     navigator.clipboard.writeText(roomId);
@@ -321,12 +356,11 @@ function Dashboard() {
 
   const handleJoinRoom = (e) => {
     e.preventDefault();
+
     if (!joinId.trim()) return;
-    setIsJoining(true);
-    setTimeout(() => {
-      alert(`Joining Room: ${joinId}\n(Note: Code editor implementation is currently being prepared.)`);
-      setIsJoining(false);
-    }, 1200);
+
+    socket.emit("join-room", joinId);
+    navigate(`/room/${joinId}`);
   };
 
   const getInitials = () => {
