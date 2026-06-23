@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import { socket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
+import TerminalComponent from "../components/Terminal";
 
 /* ═══════════════════════════════════════
    CONSTANTS
@@ -16,6 +17,16 @@ const LANGUAGES = [
   { id: "html",       label: "HTML",         ext: ["html","htm"], color: "#e37933" },
   { id: "json",       label: "JSON",         ext: ["json"],       color: "#cbcb41" },
 ];
+
+const BOILERPLATES = {
+  javascript: '// Welcome to CodeFusionAI 🚀\n\nconsole.log("Hello World!");\n',
+  python: '# Welcome to CodeFusionAI 🚀\n\nprint("Hello World!")\n',
+  cpp: '// Welcome to CodeFusionAI 🚀\n\n#include <iostream>\n\nint main() {\n    std::cout << "Hello World!" << std::endl;\n    return 0;\n}\n',
+  java: '// Welcome to CodeFusionAI 🚀\n\npublic class temp_run {\n    public static void main(String[] args) {\n        System.out.println("Hello World!");\n    }\n}\n',
+  css: '/* Welcome to CodeFusionAI 🚀 */\n\nbody {\n    margin: 0;\n    padding: 0;\n}\n',
+  html: '<!-- Welcome to CodeFusionAI 🚀 -->\n<!DOCTYPE html>\n<html lang="en">\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello World!</h1>\n</body>\n</html>\n',
+  json: '{\n  "message": "Hello World!"\n}\n'
+};
 
 function getLangByExt(filename) {
   const ext = filename.split(".").pop().toLowerCase();
@@ -150,8 +161,7 @@ function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel
           animation: "slideUp 0.18s cubic-bezier(0.34,1.56,0.64,1)",
         }}
       >
-        {/* Gradient top strip */}
-        <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${accentColor}, #a371f7)` }} />
+
 
         {/* Header */}
         <div className="flex items-center gap-3 px-5 pt-5 pb-4">
@@ -396,16 +406,17 @@ export default function Room() {
   /* ── State ── */
   const [files,           setFiles]           = useState([{
     path: "main.js",
-    content: '// Welcome to CodeFusionAI 🚀\n\nconsole.log("Hello World");\n',
+    content: BOILERPLATES.javascript,
     isFolder: false,
+    language: "javascript",
   }]);
-  const [code,            setCode]            = useState('// Welcome to CodeFusionAI 🚀\n\nconsole.log("Hello World");\n');
+  const [code,            setCode]            = useState(BOILERPLATES.javascript);
   const [activeFile,      setActiveFile]      = useState("main.js");
   const [openTabs,        setOpenTabs]        = useState(["main.js"]);
   const [expandedFolders, setExpandedFolders] = useState({});
   const [language,        setLanguage]        = useState("javascript");
   const [users,           setUsers]           = useState([]);
-  const [output,          setOutput]          = useState("Waiting for code execution...\n");
+  const [isRunning,       setIsRunning]       = useState(false);
   const [activePanel,     setActivePanel]     = useState("explorer"); // explorer | users | ai
   const [aiInput,         setAiInput]         = useState("");
   const [aiMessages,      setAiMessages]      = useState([
@@ -460,9 +471,14 @@ export default function Room() {
   /* ── Sync language whenever active file changes ── */
   useEffect(() => {
     if (!activeFile) return;
-    const lang = getLangByExt(activeFile);
-    if (lang) setLanguage(lang.id);
-  }, [activeFile]);
+    const f = files.find((file) => file.path === activeFile);
+    if (f && f.language) {
+      setLanguage(f.language);
+    } else {
+      const lang = getLangByExt(activeFile);
+      if (lang) setLanguage(lang.id);
+    }
+  }, [activeFile, files]);
 
   /* ── Socket ── */
   useEffect(() => {
@@ -480,16 +496,14 @@ export default function Room() {
             const hit = parsed.find((f) => f.path === activeFileRef.current && !f.isFolder);
             if (hit) {
               setCode(hit.content || "");
-              const lang = getLangByExt(hit.path);
-              if (lang) setLanguage(lang.id);
+              setLanguage(hit.language || getLangByExt(hit.path)?.id || "javascript");
             } else {
               const first = parsed.find((f) => !f.isFolder);
               if (first) {
                 setTimeout(() => {
                   setActiveFile(first.path);
                   setCode(first.content || "");
-                  const lang = getLangByExt(first.path);
-                  if (lang) setLanguage(lang.id);
+                  setLanguage(first.language || getLangByExt(first.path)?.id || "javascript");
                 }, 0);
               }
             }
@@ -515,9 +529,14 @@ export default function Room() {
 
     socket.on("room-users", setUsers);
 
+    socket.on("run-code-finished", () => {
+      setIsRunning(false);
+    });
+
     return () => {
       socket.off("receive-code");
       socket.off("room-users");
+      socket.off("run-code-finished");
     };
   }, [roomId]);
 
@@ -527,8 +546,13 @@ export default function Room() {
   const openFile = (path, content) => {
     setActiveFile(path);
     setCode(content || "");
-    const lang = getLangByExt(path);
-    if (lang) setLanguage(lang.id);
+    const fileItem = files.find((f) => f.path === path);
+    if (fileItem && fileItem.language) {
+      setLanguage(fileItem.language);
+    } else {
+      const lang = getLangByExt(path);
+      if (lang) setLanguage(lang.id);
+    }
     setOpenTabs((t) => t.includes(path) ? t : [...t, path]);
   };
 
@@ -553,10 +577,18 @@ export default function Room() {
   const confirmCreate = (name) => {
     const { parentPath, isFolder } = newItemModal;
     const itemPath = parentPath ? `${parentPath}/${name}` : name;
-    const newItem  = { path: itemPath, isFolder, content: isFolder ? undefined : "" };
+    const lang = getLangByExt(name);
+    const langId = lang ? lang.id : "javascript";
+    const initialContent = isFolder ? undefined : (BOILERPLATES[langId] || "");
+    const newItem  = { 
+      path: itemPath, 
+      isFolder, 
+      content: initialContent, 
+      language: langId 
+    };
     const updated  = [...files, newItem];
     setFiles(updated);
-    if (!isFolder) openFile(itemPath, "");
+    if (!isFolder) openFile(itemPath, initialContent);
     else if (parentPath) setExpandedFolders((p) => ({ ...p, [parentPath]: true }));
     emitFiles(updated);
     setNewItemModal(null);
@@ -604,6 +636,16 @@ export default function Room() {
     emitFiles(items);
     setUploadPending(null);
   };
+
+  const runCode = () => {
+    setIsRunning(true);
+    socket.emit("run-code", {
+      code,
+      language,
+    });
+  };
+
+
 
   /* ── ZIP Download ── */
   const downloadZip = async () => {
@@ -1168,6 +1210,8 @@ export default function Room() {
                   </div>
                 </div>
               )}
+
+
             </div>
           )}
 
@@ -1191,7 +1235,20 @@ export default function Room() {
                   </svg>
                   <select
                     value={language}
-                    onChange={(e) => setLanguage(e.target.value)}
+                    onChange={(e) => {
+                      const newLang = e.target.value;
+                      setLanguage(newLang);
+                      
+                      const currentIsBoilerplate = Object.values(BOILERPLATES).some(b => b === code || b.trim() === code.trim()) || code.trim() === "";
+                      const newCode = currentIsBoilerplate ? (BOILERPLATES[newLang] || "") : code;
+                      if (currentIsBoilerplate) setCode(newCode);
+
+                      const updated = files.map((f) => 
+                        f.path === activeFile ? { ...f, language: newLang, content: (f.path === activeFile && currentIsBoilerplate) ? newCode : f.content } : f
+                      );
+                      setFiles(updated);
+                      emitFiles(updated);
+                    }}
                     className="bg-transparent outline-none cursor-pointer text-[12px] font-medium"
                     style={{ color: "#e6edf3" }}
                   >
@@ -1201,16 +1258,33 @@ export default function Room() {
                   </select>
                 </div>
               </div>
-
               <button
-                onClick={() => setOutput(`▶  Running ${language} code...\n\n(Execution engine coming soon)\n`)}
+                onClick={runCode}
+                disabled={isRunning}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-150"
-                style={{ background: "linear-gradient(135deg, #238636, #2ea043)", color: "#fff", boxShadow: "0 2px 8px #23863640" }}
-                onMouseEnter={(e) => e.currentTarget.style.opacity = "0.88"}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
+                style={{ 
+                  background: isRunning ? "#21262d" : "linear-gradient(135deg, #238636, #2ea043)", 
+                  color: isRunning ? "#858585" : "#fff", 
+                  boxShadow: isRunning ? "none" : "0 2px 8px #23863640",
+                  cursor: isRunning ? "not-allowed" : "pointer"
+                }}
+                onMouseEnter={(e) => { if (!isRunning) e.currentTarget.style.opacity = "0.88"; }}
+                onMouseLeave={(e) => { if (!isRunning) e.currentTarget.style.opacity = "1"; }}
               >
-                <svg width="9" height="9" viewBox="0 0 10 10" fill="#fff"><path d="M1 1l8 4-8 4V1z" /></svg>
-                Run Code
+                {isRunning ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ animation: "spin 1s linear infinite" }}>
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" />
+                      <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+                    </svg>
+                    Running...
+                  </>
+                ) : (
+                  <>
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="#fff"><path d="M1 1l8 4-8 4V1z" /></svg>
+                    Run Code
+                  </>
+                )}
               </button>
             </div>
 
@@ -1304,44 +1378,11 @@ export default function Room() {
               className="shrink-0 flex flex-col"
               style={{ height: `${terminalHeight}px`, background: "#0d1117" }}
             >
-              {/* Terminal header */}
-              <div
-                className="h-8 flex items-center justify-between px-3 shrink-0"
-                style={{ background: "#161b22", borderBottom: "1px solid #21262d" }}
-              >
-                <div className="flex items-center gap-2">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                    <rect x="2" y="3" width="20" height="18" rx="2" stroke="#484f58" strokeWidth="1.4" />
-                    <path d="M8 9l4 3-4 3" stroke="#3fb950" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M14 15h3" stroke="#484f58" strokeWidth="1.4" strokeLinecap="round" />
-                  </svg>
-                  <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#7d8590" }}>Terminal</span>
-                  <span className="text-[10px]" style={{ color: "#484f58" }}>— bash</span>
-                </div>
-                <button
-                  onClick={() => setOutput("Waiting for code execution...\n")}
-                  className="px-2 py-0.5 rounded text-[10px] transition-all duration-150"
-                  style={{ color: "#484f58", border: "1px solid #30363d" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = "#e6edf3"; e.currentTarget.style.borderColor = "#484f58"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "#484f58"; e.currentTarget.style.borderColor = "#30363d"; }}
-                >
-                  Clear
-                </button>
-              </div>
+
 
               {/* Output */}
-              <div className="flex-1 overflow-auto px-4 py-2.5">
-                <pre
-                  className="text-[12px] leading-6 whitespace-pre-wrap"
-                  style={{ fontFamily: "'Consolas', 'Courier New', monospace", color: "#e6edf3" }}
-                >
-                  <span style={{ color: "#3fb950", fontWeight: 600 }}>user@codefusion</span>
-                  <span style={{ color: "#484f58" }}>:</span>
-                  <span style={{ color: "#58a6ff" }}>~/{activeFile ? activeFile.split("/")[0] : "workspace"}</span>
-                  <span style={{ color: "#484f58" }}>$ </span>
-                  <br />
-                  {output}
-                </pre>
+              <div className="flex-1 overflow-hidden px-4 py-2.5">
+                <TerminalComponent />
               </div>
             </div>
           </div>
@@ -1380,7 +1421,7 @@ export default function Room() {
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
             >
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb950" }} />
-              <span style={{ color: "#3fb950" }} className="font-medium">{users.length + 1} online</span>
+              <span style={{ color: "#3fb950" }} className="font-medium">{users.length} online</span>
             </div>
           </div>
 

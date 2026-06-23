@@ -3,7 +3,9 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import executeCodeRoute from "./routes/executeCode.js";
+import { createTerminal, terminals } from "./terminal/terminal.js";
+import fs from "fs";
+import path from "path";
 
 dotenv.config();
 
@@ -23,6 +25,15 @@ const io = new Server(httpServer, {
 
 const roomsCode = new Map();
 
+const INITIAL_WORKSPACE = JSON.stringify([
+  {
+    path: "main.js",
+    content: '// Welcome to CodeFusionAI 🚀\n\nconsole.log("Hello World!");\n',
+    isFolder: false,
+    language: "javascript",
+  },
+]);
+
 const broadcastRoomUsers = async (roomId) => {
   try {
     const sockets = await io.in(roomId).fetchSockets();
@@ -39,6 +50,7 @@ const broadcastRoomUsers = async (roomId) => {
 
 io.on("connection", (socket) => {
   console.log("User Connected:", socket.id);
+  createTerminal(socket);
 
   socket.emit("welcome", "Socket Connected Successfully");
 
@@ -64,7 +76,7 @@ io.on("connection", (socket) => {
     console.log(`${username} (${socket.id}) created room ${roomId}`);
 
     if (!roomsCode.has(roomId)) {
-      roomsCode.set(roomId, "// Welcome to CodeFusionAI 🚀\n");
+      roomsCode.set(roomId, INITIAL_WORKSPACE);
     }
 
     await broadcastRoomUsers(roomId);
@@ -94,7 +106,7 @@ io.on("connection", (socket) => {
     console.log(`${username} (${socket.id}) joined room ${roomId}`);
 
     if (!roomsCode.has(roomId)) {
-      roomsCode.set(roomId, "// Welcome to CodeFusionAI 🚀\n");
+      roomsCode.set(roomId, INITIAL_WORKSPACE);
     }
 
     await broadcastRoomUsers(roomId);
@@ -139,12 +151,39 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Real-Time Code Execution inside interactive terminal
+  socket.on("run-code", ({ code, language }) => {
+    try {
+      const ext = language === "python" ? "py" : language === "java" ? "java" : language === "cpp" ? "cpp" : language === "html" ? "html" : "js";
+      const fileName = `.temp_run.${ext}`;
+      const projectRoot = path.resolve(process.cwd(), "..");
+      const filePath = path.join(projectRoot, fileName);
+      
+      fs.writeFileSync(filePath, code);
+      
+      const term = terminals.get(socket.id);
+      if (term) {
+        socket.emit("terminal:data", `\r\n\x1b[33m▶ Running ${language} code in local terminal...\x1b[0m\r\n`);
+        const isWin = process.platform === "win32";
+        const javaCmd = isWin ? `javac ${fileName} ; if ($?) { java temp_run }` : `javac ${fileName} && java temp_run`;
+        const cppCmd = isWin ? `g++ ${fileName} -o temp_run.exe ; if ($?) { ./temp_run.exe }` : `g++ ${fileName} -o temp_run && ./temp_run`;
+        const cmd = language === "python" ? `python ${fileName}` : language === "java" ? javaCmd : language === "cpp" ? cppCmd : language === "html" ? `echo "HTML saved to ${fileName}. Open in browser."` : `node ${fileName}`;
+        term.write(`${cmd}\r`);
+      }
+    } catch (error) {
+      console.error("Code execution error:", error);
+      socket.emit("terminal:data", `\r\n\x1b[31m❌ Execution Error: ${error.message}\x1b[0m\r\n`);
+    } finally {
+      setTimeout(() => socket.emit("run-code-finished"), 500);
+    }
+  });
+
   // Disconnect
   socket.on("disconnect", () => {
     console.log("User Disconnected:", socket.id);
   });
 });
-app.use("/api/execute", executeCodeRoute);
+
 
 app.get("/", (req, res) => {
   res.send("Backend Running");
