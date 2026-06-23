@@ -359,6 +359,7 @@ function Dashboard() {
 
     if (!joinId.trim()) return;
 
+    setIsJoining(true);
     socket.emit("join-room", joinId);
     navigate(`/room/${joinId}`);
   };
