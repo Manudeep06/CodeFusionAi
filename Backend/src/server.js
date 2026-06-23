@@ -34,6 +34,35 @@ const INITIAL_WORKSPACE = JSON.stringify([
   },
 ]);
 
+const syncFilesToDisk = (codeString) => {
+  try {
+    const files = JSON.parse(codeString);
+    const workspaceRoot = path.join(path.resolve(process.cwd(), ".."), "workspace");
+    
+    if (!fs.existsSync(workspaceRoot)) {
+      fs.mkdirSync(workspaceRoot, { recursive: true });
+    }
+
+    files.forEach(f => {
+      if (!f.path) return;
+      const fullPath = path.join(workspaceRoot, f.path);
+      if (f.isFolder) {
+        if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true });
+      } else {
+        const dir = path.dirname(fullPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        if (f.content !== undefined) {
+           fs.writeFileSync(fullPath, f.content);
+        }
+      }
+    });
+  } catch (err) {
+    console.error("Sync error:", err);
+  }
+};
+
+syncFilesToDisk(INITIAL_WORKSPACE);
+
 const broadcastRoomUsers = async (roomId) => {
   try {
     const sockets = await io.in(roomId).fetchSockets();
@@ -126,7 +155,13 @@ io.on("connection", (socket) => {
   // Real-Time Code Synchronization
   socket.on("code-change", ({ roomId, code }) => {
     roomsCode.set(roomId, code);
+    syncFilesToDisk(code);
     socket.to(roomId).emit("receive-code", code);
+  });
+
+  // Sync workspace to disk only (no broadcast) — used on reconnect after server restart
+  socket.on("sync-workspace", ({ code }) => {
+    syncFilesToDisk(code);
   });
 
   // Handle disconnecting before socket leaves rooms to update counts

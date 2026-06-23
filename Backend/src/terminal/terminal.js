@@ -1,5 +1,6 @@
 import pty from "node-pty";
 import path from "path";
+import fs from "fs";
 
 export const terminals = new Map();
 
@@ -11,12 +12,17 @@ export const createTerminal = (socket) => {
 
   // Move one level up from Backend folder
   const projectRoot = path.resolve(process.cwd(), "..");
+  const workspacePath = path.join(projectRoot, "workspace");
+  
+  if (!fs.existsSync(workspacePath)) {
+    fs.mkdirSync(workspacePath, { recursive: true });
+  }
 
   const term = pty.spawn(shell, [], {
     name: "xterm-color",
     cols: 120,
     rows: 30,
-    cwd: projectRoot,
+    cwd: workspacePath,
     env: process.env,
   });
 

@@ -487,6 +487,16 @@ export default function Room() {
 
     socket.emit("join-room", { roomId, username, photoURL });
 
+    // Sync current files to disk immediately after joining (handles server restarts)
+    socket.on("room-joined", () => {
+      setFiles((currentFiles) => {
+        if (currentFiles.length > 0) {
+          socket.emit("sync-workspace", { roomId, code: JSON.stringify(currentFiles) });
+        }
+        return currentFiles;
+      });
+    });
+
     socket.on("receive-code", (incomingCode) => {
       try {
         const parsed = JSON.parse(incomingCode);
@@ -534,6 +544,7 @@ export default function Room() {
     });
 
     return () => {
+      socket.off("room-joined");
       socket.off("receive-code");
       socket.off("room-users");
       socket.off("run-code-finished");
@@ -626,14 +637,26 @@ export default function Room() {
 
   const confirmUpload = () => {
     const items = uploadPending;
-    setFiles(items);
+
+    // Build explicit folder entries from all path segments
+    const folderSet = new Set();
+    items.forEach((f) => {
+      const parts = f.path.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        folderSet.add(parts.slice(0, i).join("/"));
+      }
+    });
+    const folderEntries = Array.from(folderSet).map((p) => ({ path: p, isFolder: true, content: undefined }));
+    const allItems = [...folderEntries, ...items];
+
+    setFiles(allItems);
     const first = items.find((f) => !f.isFolder);
     if (first) openFile(first.path, first.content);
     setOpenTabs(first ? [first.path] : []);
     const exp = {};
     items.forEach((f) => { const p = f.path.split("/"); if (p.length > 1) exp[p[0]] = true; });
     setExpandedFolders(exp);
-    emitFiles(items);
+    emitFiles(allItems);
     setUploadPending(null);
   };
 
@@ -1233,29 +1256,12 @@ export default function Room() {
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
                     <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  <select
-                    value={language}
-                    onChange={(e) => {
-                      const newLang = e.target.value;
-                      setLanguage(newLang);
-                      
-                      const currentIsBoilerplate = Object.values(BOILERPLATES).some(b => b === code || b.trim() === code.trim()) || code.trim() === "";
-                      const newCode = currentIsBoilerplate ? (BOILERPLATES[newLang] || "") : code;
-                      if (currentIsBoilerplate) setCode(newCode);
-
-                      const updated = files.map((f) => 
-                        f.path === activeFile ? { ...f, language: newLang, content: (f.path === activeFile && currentIsBoilerplate) ? newCode : f.content } : f
-                      );
-                      setFiles(updated);
-                      emitFiles(updated);
-                    }}
-                    className="bg-transparent outline-none cursor-pointer text-[12px] font-medium"
-                    style={{ color: "#e6edf3" }}
+                  <span
+                    className="bg-transparent outline-none text-[12px] font-medium"
+                    style={{ color: "#e6edf3", cursor: "default" }}
                   >
-                    {LANGUAGES.map((l) => (
-                      <option key={l.id} value={l.id} style={{ background: "#161b22" }}>{l.label}</option>
-                    ))}
-                  </select>
+                    {LANGUAGES.find(l => l.id === language)?.label || "Text"}
+                  </span>
                 </div>
               </div>
               <button
