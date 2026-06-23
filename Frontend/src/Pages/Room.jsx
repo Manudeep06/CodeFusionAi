@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Editor from "@monaco-editor/react";
 import { socket } from "../services/socket";
+import { useAuth } from "../context/AuthContext";
 
 /* ═══════════════════════════════════════
    CONSTANTS
@@ -349,11 +350,48 @@ function UploadModal({ fileCount, onConfirm, onCancel }) {
 }
 
 /* ═══════════════════════════════════════
+   COPY ROOM ID BUTTON
+═══════════════════════════════════════ */
+function CopyRoomId({ roomId }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(roomId).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={copy}
+      title="Copy Room ID"
+      className="flex items-center justify-center w-4 h-4 rounded transition-all duration-150"
+      style={{ color: copied ? "#3fb950" : "#7d8590" }}
+      onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "#a371f7"; }}
+      onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "#7d8590"; }}
+    >
+      {copied ? (
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+          <path d="M3 8l4 4 6-6" stroke="#3fb950" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
+          <rect x="5" y="1" width="9" height="11" rx="1" stroke="currentColor" strokeWidth="1.3" />
+          <path d="M2 5v9a1 1 0 0 0 1 1h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+/* ═══════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════ */
 export default function Room() {
   const { roomId }  = useParams();
   const navigate    = useNavigate();
+  const { user }    = useAuth();
+  const username    = user?.displayName || user?.email?.split("@")[0] || "Developer";
+  const photoURL    = user?.photoURL || "";
 
   /* ── State ── */
   const [files,           setFiles]           = useState([{
@@ -419,9 +457,20 @@ export default function Room() {
 
   useEffect(() => { activeFileRef.current = activeFile; }, [activeFile]);
 
+  /* ── Sync language whenever active file changes ── */
+  useEffect(() => {
+    if (!activeFile) return;
+    const lang = getLangByExt(activeFile);
+    if (lang) setLanguage(lang.id);
+  }, [activeFile]);
+
   /* ── Socket ── */
   useEffect(() => {
-    socket.emit("join-room", roomId);
+    // Ensure the socket is connected
+    if (!socket.connected) socket.connect();
+
+    socket.emit("join-room", { roomId, username, photoURL });
+
     socket.on("receive-code", (incomingCode) => {
       try {
         const parsed = JSON.parse(incomingCode);
@@ -429,30 +478,47 @@ export default function Room() {
           setFiles((cur) => {
             if (JSON.stringify(cur) === incomingCode) return cur;
             const hit = parsed.find((f) => f.path === activeFileRef.current && !f.isFolder);
-            if (hit) setCode(hit.content || "");
-            else {
+            if (hit) {
+              setCode(hit.content || "");
+              const lang = getLangByExt(hit.path);
+              if (lang) setLanguage(lang.id);
+            } else {
               const first = parsed.find((f) => !f.isFolder);
-              setTimeout(() => { setActiveFile(first?.path || ""); setCode(first?.content || ""); }, 0);
+              if (first) {
+                setTimeout(() => {
+                  setActiveFile(first.path);
+                  setCode(first.content || "");
+                  const lang = getLangByExt(first.path);
+                  if (lang) setLanguage(lang.id);
+                }, 0);
+              }
             }
             return parsed;
           });
           return;
         }
-      } catch (_) { /* legacy */ }
+      } catch (_) { /* legacy plain string */ }
+      // Legacy plain-string code
       setCode(incomingCode || "");
       setFiles((prev) => {
         let changed = false;
         const next = prev.map((f) => {
           if (f.path === activeFileRef.current && f.content !== incomingCode) {
-            changed = true; return { ...f, content: incomingCode || "" };
+            changed = true;
+            return { ...f, content: incomingCode || "" };
           }
           return f;
         });
         return changed ? next : prev;
       });
     });
+
     socket.on("room-users", setUsers);
-    return () => { socket.off("receive-code"); socket.off("room-users"); };
+
+    return () => {
+      socket.off("receive-code");
+      socket.off("room-users");
+    };
   }, [roomId]);
 
   /* ── Helpers ── */
@@ -1318,10 +1384,11 @@ export default function Room() {
             </div>
           </div>
 
-          {/* Centre – room ID */}
+          {/* Centre – room ID + copy */}
           <div className="flex items-center gap-1.5" style={{ color: "#a371f7" }}>
             <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="1" stroke="#a371f7" strokeWidth="1.3" fill="none" /><path d="M5 4V3a3 3 0 0 1 6 0v1" stroke="#a371f7" strokeWidth="1.3" /></svg>
             <span className="font-mono font-medium" style={{ letterSpacing: "0.03em" }}>Room: {roomId}</span>
+            <CopyRoomId roomId={roomId} />
           </div>
 
           {/* Right */}
