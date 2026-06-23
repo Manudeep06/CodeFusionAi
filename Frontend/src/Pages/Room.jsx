@@ -220,12 +220,8 @@ function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel
             <button
               type="submit"
               className="px-5 py-2 rounded-lg text-xs font-bold transition-all duration-150"
-              style={{
-                background: `linear-gradient(135deg, ${accentColor}, #a371f7)`,
-                color: "#fff",
-                boxShadow: `0 4px 14px ${accentColor}30`,
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = "0.9"}
+              style={{ background: accentColor, color: "#fff" }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = "0.85"}
               onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
             >
               Create {isFolder ? "Folder" : "File"}
@@ -379,6 +375,38 @@ export default function Room() {
   ]);
   const [aiLoading,       setAiLoading]       = useState(false);
   const aiBottomRef = useRef(null);
+
+  /* ── Terminal resize ── */
+  const [terminalHeight, setTerminalHeight] = useState(185);
+  const isDragging = useRef(false);
+  const dragStartY = useRef(0);
+  const dragStartH = useRef(0);
+
+  const onDividerMouseDown = (e) => {
+    isDragging.current  = true;
+    dragStartY.current  = e.clientY;
+    dragStartH.current  = terminalHeight;
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!isDragging.current) return;
+      const delta  = dragStartY.current - e.clientY;
+      const newH   = Math.max(80, Math.min(600, dragStartH.current + delta));
+      setTerminalHeight(newH);
+    };
+    const onUp = () => {
+      if (!isDragging.current) return;
+      isDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, []);
 
   /* ── Modal state ── */
   const [newItemModal,  setNewItemModal]  = useState(null);
@@ -1188,10 +1216,27 @@ export default function Room() {
               />
             </div>
 
+            {/* ── DRAG DIVIDER ── */}
+            <div
+              onMouseDown={onDividerMouseDown}
+              className="shrink-0 flex items-center justify-center"
+              style={{
+                height: "5px",
+                background: "#21262d",
+                cursor: "ns-resize",
+                position: "relative",
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "#58a6ff"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "#21262d"}
+              title="Drag to resize terminal"
+            >
+              <div style={{ width: "40px", height: "2px", borderRadius: "1px", background: "inherit", opacity: 0.4 }} />
+            </div>
+
             {/* ── TERMINAL / OUTPUT ── */}
             <div
               className="shrink-0 flex flex-col"
-              style={{ height: "185px", background: "#0d1117", borderTop: "1px solid #21262d" }}
+              style={{ height: `${terminalHeight}px`, background: "#0d1117" }}
             >
               {/* Terminal header */}
               <div
@@ -1199,13 +1244,12 @@ export default function Room() {
                 style={{ background: "#161b22", borderBottom: "1px solid #21262d" }}
               >
                 <div className="flex items-center gap-2">
-                  {/* macOS-style dots */}
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#f85149", boxShadow: "0 0 4px #f8514960" }} />
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#e3b341", boxShadow: "0 0 4px #e3b34160" }} />
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb95060" }} />
-                  </div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest ml-1" style={{ color: "#3fb950" }}>Terminal</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <rect x="2" y="3" width="20" height="18" rx="2" stroke="#484f58" strokeWidth="1.4" />
+                    <path d="M8 9l4 3-4 3" stroke="#3fb950" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M14 15h3" stroke="#484f58" strokeWidth="1.4" strokeLinecap="round" />
+                  </svg>
+                  <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#7d8590" }}>Terminal</span>
                   <span className="text-[10px]" style={{ color: "#484f58" }}>— bash</span>
                 </div>
                 <button
