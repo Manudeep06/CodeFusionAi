@@ -26,39 +26,44 @@ function getFileColor(filename) {
   return lang ? lang.color : "#858585";
 }
 
-/* ── VS Code colours ── */
+/* ── Enhanced VS Code colour palette ── */
 const VS = {
-  bg:           "#1e1e1e",
-  sidebarBg:    "#252526",
-  activityBg:   "#333333",
-  tabBarBg:     "#2d2d2d",
-  tabActive:    "#1e1e1e",
-  tabInactive:  "#2d2d2d",
-  tabBorder:    "#1e1e1e",
-  statusBg:     "#007acc",
-  input:        "#3c3c3c",
-  border:       "#474747",
-  highlight:    "#094771",
-  hover:        "#2a2d2e",
-  text:         "#cccccc",
-  textMuted:    "#858585",
-  textDim:      "#6e6e6e",
-  accent:       "#007acc",
-  green:        "#4ec9b0",
-  yellow:       "#dcdcaa",
-  red:          "#f44747",
-  orange:       "#ce9178",
+  bg:           "#0d1117",
+  sidebarBg:    "#161b22",
+  activityBg:   "#0d1117",
+  tabBarBg:     "#161b22",
+  tabActive:    "#0d1117",
+  tabInactive:  "#161b22",
+  tabBorder:    "#30363d",
+  statusBg:     "#1f2937",
+  input:        "#21262d",
+  border:       "#30363d",
+  highlight:    "#1d4ed840",
+  hover:        "#1c2128",
+  text:         "#e6edf3",
+  textMuted:    "#7d8590",
+  textDim:      "#484f58",
+  accent:       "#58a6ff",
+  accentPurple: "#a371f7",
+  green:        "#3fb950",
+  teal:         "#39d353",
+  yellow:       "#e3b341",
+  red:          "#f85149",
+  orange:       "#f0883e",
+  gradientA:    "#58a6ff",
+  gradientB:    "#a371f7",
 };
 
 /* ═══════════════════════════════════════
-   FILE ICON (SVG dot coloured)
+   FILE ICON (SVG coloured by language)
 ═══════════════════════════════════════ */
 function FileIcon({ filename, size = 14 }) {
   const color = getFileColor(filename);
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className="shrink-0">
-      <path d="M4 2h5.5L13 5.5V14H4V2z" fill={color + "28"} stroke={color} strokeWidth="0.8" />
-      <path d="M9 2v3.5h4" stroke={color} strokeWidth="0.8" fill="none" />
+      <path d="M4 2h5.5L13 5.5V14H4V2z" fill={color + "20"} stroke={color} strokeWidth="1" />
+      <path d="M9 2v3.5h4" stroke={color} strokeWidth="1" fill="none" />
+      <path d="M6 8h4M6 10h3" stroke={color} strokeWidth="0.8" strokeLinecap="round" opacity="0.6" />
     </svg>
   );
 }
@@ -68,11 +73,11 @@ function FolderIcon({ open = false, size = 14 }) {
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className="shrink-0">
       {open ? (
         <>
-          <path d="M1 4h5l1.5 2H15v7H1V4z" fill="#dcb67a" opacity="0.9" />
-          <path d="M1 6h14" stroke="#dcb67a" strokeWidth="0.6" />
+          <path d="M1 5h4.5l1.5 2H15v7H1V5z" fill="#e3b34120" stroke="#e3b341" strokeWidth="0.9" />
+          <path d="M1 7h14" stroke="#e3b341" strokeWidth="0.7" opacity="0.5" />
         </>
       ) : (
-        <path d="M1 4h5l1 2H15v7H1V4z" fill="#dcb67a" opacity="0.75" />
+        <path d="M1 5h4.5l1 2H15v7H1V5z" fill="#e3b34118" stroke="#e3b341" strokeWidth="0.9" />
       )}
     </svg>
   );
@@ -86,12 +91,25 @@ function ActivityIcon({ title, active, onClick, children }) {
     <button
       title={title}
       onClick={onClick}
-      className="w-12 h-12 flex items-center justify-center relative transition-colors duration-100"
+      className="w-12 h-12 flex items-center justify-center relative group transition-all duration-150"
       style={{
-        color: active ? VS.text : VS.textMuted,
-        borderLeft: active ? `2px solid ${VS.text}` : "2px solid transparent",
+        color: active ? "#e6edf3" : "#484f58",
+        borderLeft: active ? "2px solid #58a6ff" : "2px solid transparent",
+        background: active ? "#1c2128" : "transparent",
+      }}
+      onMouseEnter={(e) => {
+        if (!active) e.currentTarget.style.color = "#7d8590";
+      }}
+      onMouseLeave={(e) => {
+        if (!active) e.currentTarget.style.color = "#484f58";
       }}
     >
+      {active && (
+        <span
+          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r"
+          style={{ background: "linear-gradient(180deg, #58a6ff, #a371f7)" }}
+        />
+      )}
       {children}
     </button>
   );
@@ -117,55 +135,100 @@ function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel
     onConfirm(t);
   };
 
+  const accentColor = isFolder ? "#e3b341" : "#58a6ff";
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-24">
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ animation: "fadeIn 0.15s ease" }}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
       <div
-        className="relative w-[420px] rounded shadow-2xl"
-        style={{ background: "#252526", border: `1px solid ${VS.border}` }}
+        className="relative w-[440px] rounded-xl overflow-hidden shadow-2xl"
+        style={{
+          background: "#161b22",
+          border: "1px solid #30363d",
+          boxShadow: `0 0 0 1px #30363d, 0 24px 48px #00000080, 0 0 60px ${accentColor}18`,
+          animation: "slideUp 0.18s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
       >
-        {/* Title bar */}
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: VS.border }}>
-          <span className="text-sm font-semibold" style={{ color: VS.text }}>
-            New {isFolder ? "Folder" : "File"}
-            {parentPath && <span className="ml-1" style={{ color: VS.textMuted, fontWeight: 400 }}>in {parentPath}</span>}
-          </span>
-          <button onClick={onCancel} className="text-lg leading-none hover:opacity-70 transition" style={{ color: VS.textMuted }}>×</button>
+        {/* Gradient top strip */}
+        <div className="h-0.5" style={{ background: `linear-gradient(90deg, ${accentColor}, #a371f7)` }} />
+
+        {/* Header */}
+        <div className="flex items-center gap-3 px-5 pt-5 pb-4">
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0"
+            style={{ background: accentColor + "18", border: `1px solid ${accentColor}30` }}
+          >
+            {isFolder ? "📁" : "📄"}
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold" style={{ color: "#e6edf3" }}>
+              New {isFolder ? "Folder" : "File"}
+            </h3>
+            {parentPath && (
+              <p className="text-[11px] mt-0.5" style={{ color: "#7d8590", fontFamily: "Consolas, monospace" }}>
+                inside / {parentPath}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={onCancel}
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-lg leading-none transition-colors"
+            style={{ color: "#484f58" }}
+            onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
+            onMouseLeave={(e) => e.currentTarget.style.color = "#484f58"}
+          >×</button>
         </div>
 
         {/* Body */}
-        <form onSubmit={submit} className="px-4 py-4 flex flex-col gap-3">
+        <form onSubmit={submit} className="px-5 pb-5 flex flex-col gap-4">
           <div>
-            <label className="text-xs mb-1.5 block" style={{ color: VS.textMuted }}>
+            <label className="text-[11px] font-semibold uppercase tracking-wider mb-2 block" style={{ color: "#7d8590" }}>
               {isFolder ? "Folder" : "File"} Name
             </label>
             <input
               ref={inputRef}
               value={name}
               onChange={(e) => { setName(e.target.value); setError(""); }}
-              placeholder={isFolder ? "new-folder" : "filename.js"}
+              placeholder={isFolder ? "e.g.  components" : "e.g.  index.js"}
               spellCheck={false}
-              className="w-full rounded px-3 py-2 text-sm outline-none"
+              className="w-full rounded-lg px-4 py-2.5 text-sm outline-none transition-all duration-150"
               style={{
-                background: VS.input,
-                color: VS.text,
-                border: `1px solid ${error ? VS.red : VS.accent}`,
+                background: "#0d1117",
+                color: "#e6edf3",
+                border: `1px solid ${error ? "#f85149" : accentColor + "60"}`,
                 fontFamily: "'Consolas', monospace",
+                boxShadow: error ? "0 0 0 3px #f8514920" : `0 0 0 3px ${accentColor}12`,
               }}
             />
-            {error && <p className="mt-1.5 text-xs" style={{ color: VS.red }}>⚠ {error}</p>}
+            {error && (
+              <p className="mt-2 text-[11px] flex items-center gap-1.5" style={{ color: "#f85149" }}>
+                <span>⚠</span> {error}
+              </p>
+            )}
           </div>
 
-          <div className="flex justify-end gap-2 pt-1">
-            <button type="button" onClick={onCancel}
-              className="px-4 py-1.5 rounded text-sm transition-opacity hover:opacity-80"
-              style={{ background: VS.hover, color: VS.text, border: `1px solid ${VS.border}` }}>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button" onClick={onCancel}
+              className="px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-150"
+              style={{ background: "#21262d", color: "#7d8590", border: "1px solid #30363d" }}
+              onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
+              onMouseLeave={(e) => e.currentTarget.style.color = "#7d8590"}
+            >
               Cancel
             </button>
-            <button type="submit"
-              className="px-4 py-1.5 rounded text-sm font-semibold transition-opacity hover:opacity-90"
-              style={{ background: VS.accent, color: "#fff" }}>
-              Create
+            <button
+              type="submit"
+              className="px-5 py-2 rounded-lg text-xs font-bold transition-all duration-150"
+              style={{
+                background: `linear-gradient(135deg, ${accentColor}, #a371f7)`,
+                color: "#fff",
+                boxShadow: `0 4px 14px ${accentColor}30`,
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = "0.9"}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
+            >
+              Create {isFolder ? "Folder" : "File"}
             </button>
           </div>
         </form>
@@ -179,29 +242,55 @@ function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel
 ═══════════════════════════════════════ */
 function DeleteModal({ path, isFolder, onConfirm, onCancel }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-24">
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
-      <div className="relative w-[400px] rounded shadow-2xl" style={{ background: "#252526", border: `1px solid ${VS.border}` }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: VS.border }}>
-          <span className="text-sm font-semibold" style={{ color: VS.text }}>Delete {isFolder ? "Folder" : "File"}</span>
-          <button onClick={onCancel} className="text-lg leading-none hover:opacity-70" style={{ color: VS.textMuted }}>×</button>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ animation: "fadeIn 0.15s ease" }}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div
+        className="relative w-[420px] rounded-xl overflow-hidden shadow-2xl"
+        style={{
+          background: "#161b22",
+          border: "1px solid #30363d",
+          boxShadow: "0 0 0 1px #30363d, 0 24px 48px #00000080, 0 0 60px #f8514918",
+          animation: "slideUp 0.18s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
+      >
+        <div className="h-0.5" style={{ background: "linear-gradient(90deg, #f85149, #ff6b6b)" }} />
+
+        <div className="flex items-center gap-3 px-5 pt-5 pb-4">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0"
+            style={{ background: "#f8514918", border: "1px solid #f8514930" }}>
+            🗑
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold" style={{ color: "#e6edf3" }}>Delete {isFolder ? "Folder" : "File"}</h3>
+            <p className="text-[11px] mt-0.5 font-mono truncate" style={{ color: "#7d8590" }}>{path}</p>
+          </div>
+          <button onClick={onCancel} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg"
+            style={{ color: "#484f58" }}
+            onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
+            onMouseLeave={(e) => e.currentTarget.style.color = "#484f58"}
+          >×</button>
         </div>
-        <div className="px-4 py-4 flex flex-col gap-4">
-          <p className="text-sm leading-relaxed" style={{ color: VS.text }}>
-            Are you sure you want to delete{" "}
-            <span style={{ color: VS.yellow, fontFamily: "Consolas, monospace" }}>{path}</span>?
-            {isFolder && " This will recursively delete all files inside."}
-            <span style={{ color: VS.textMuted }}> This action cannot be undone.</span>
-          </p>
+
+        <div className="px-5 pb-5 flex flex-col gap-4">
+          <div className="rounded-lg p-3 text-xs leading-relaxed" style={{ background: "#f8514910", border: "1px solid #f8514920", color: "#e6edf3" }}>
+            {isFolder
+              ? "This will permanently delete the folder and all files inside it."
+              : "This will permanently delete this file."}{" "}
+            <span style={{ color: "#7d8590" }}>This action cannot be undone.</span>
+          </div>
           <div className="flex justify-end gap-2">
-            <button onClick={onCancel} className="px-4 py-1.5 rounded text-sm hover:opacity-80"
-              style={{ background: VS.hover, color: VS.text, border: `1px solid ${VS.border}` }}>
-              Cancel
-            </button>
-            <button onClick={onConfirm} className="px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90"
-              style={{ background: VS.red, color: "#fff" }}>
-              Delete
-            </button>
+            <button onClick={onCancel}
+              className="px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+              style={{ background: "#21262d", color: "#7d8590", border: "1px solid #30363d" }}
+              onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
+              onMouseLeave={(e) => e.currentTarget.style.color = "#7d8590"}
+            >Cancel</button>
+            <button onClick={onConfirm}
+              className="px-5 py-2 rounded-lg text-xs font-bold transition-all"
+              style={{ background: "linear-gradient(135deg, #f85149, #ff6b6b)", color: "#fff", boxShadow: "0 4px 14px #f8514930" }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = "0.88"}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
+            >Delete</button>
           </div>
         </div>
       </div>
@@ -214,28 +303,48 @@ function DeleteModal({ path, isFolder, onConfirm, onCancel }) {
 ═══════════════════════════════════════ */
 function UploadModal({ fileCount, onConfirm, onCancel }) {
   return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-24">
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
-      <div className="relative w-[420px] rounded shadow-2xl" style={{ background: "#252526", border: `1px solid ${VS.border}` }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: VS.border }}>
-          <span className="text-sm font-semibold" style={{ color: VS.text }}>Upload Folder</span>
-          <button onClick={onCancel} className="text-lg leading-none hover:opacity-70" style={{ color: VS.textMuted }}>×</button>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ animation: "fadeIn 0.15s ease" }}>
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div
+        className="relative w-[440px] rounded-xl overflow-hidden shadow-2xl"
+        style={{
+          background: "#161b22",
+          border: "1px solid #30363d",
+          boxShadow: "0 0 0 1px #30363d, 0 24px 48px #00000080, 0 0 60px #58a6ff18",
+          animation: "slideUp 0.18s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
+      >
+        <div className="h-0.5" style={{ background: "linear-gradient(90deg, #58a6ff, #a371f7)" }} />
+        <div className="flex items-center gap-3 px-5 pt-5 pb-4">
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0"
+            style={{ background: "#58a6ff18", border: "1px solid #58a6ff30" }}>📤</div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold" style={{ color: "#e6edf3" }}>Upload Folder</h3>
+            <p className="text-[11px] mt-0.5" style={{ color: "#7d8590" }}>{fileCount} files ready to import</p>
+          </div>
+          <button onClick={onCancel} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg"
+            style={{ color: "#484f58" }}
+            onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
+            onMouseLeave={(e) => e.currentTarget.style.color = "#484f58"}
+          >×</button>
         </div>
-        <div className="px-4 py-4 flex flex-col gap-4">
-          <p className="text-sm leading-relaxed" style={{ color: VS.text }}>
-            <span style={{ color: VS.yellow }}>{fileCount} files</span> detected.
-            Uploading will <span style={{ color: VS.red }}>replace your current workspace</span>.
-            All existing files will be lost.
-          </p>
+        <div className="px-5 pb-5 flex flex-col gap-4">
+          <div className="rounded-lg p-3 text-xs leading-relaxed" style={{ background: "#e3b34110", border: "1px solid #e3b34120", color: "#e6edf3" }}>
+            ⚠ Uploading will <span style={{ color: "#f85149", fontWeight: 600 }}>replace your current workspace</span>. All existing files will be lost.
+          </div>
           <div className="flex justify-end gap-2">
-            <button onClick={onCancel} className="px-4 py-1.5 rounded text-sm hover:opacity-80"
-              style={{ background: VS.hover, color: VS.text, border: `1px solid ${VS.border}` }}>
-              Cancel
-            </button>
-            <button onClick={onConfirm} className="px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90"
-              style={{ background: VS.accent, color: "#fff" }}>
-              Upload & Replace
-            </button>
+            <button onClick={onCancel}
+              className="px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+              style={{ background: "#21262d", color: "#7d8590", border: "1px solid #30363d" }}
+              onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
+              onMouseLeave={(e) => e.currentTarget.style.color = "#7d8590"}
+            >Cancel</button>
+            <button onClick={onConfirm}
+              className="px-5 py-2 rounded-lg text-xs font-bold transition-all"
+              style={{ background: "linear-gradient(135deg, #58a6ff, #a371f7)", color: "#fff", boxShadow: "0 4px 14px #58a6ff30" }}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = "0.88"}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
+            >Upload & Replace</button>
           </div>
         </div>
       </div>
@@ -542,6 +651,14 @@ export default function Room() {
       {deleteModal   && <DeleteModal   {...deleteModal}   onConfirm={confirmDelete}     onCancel={() => setDeleteModal(null)} />}
       {uploadPending && <UploadModal   fileCount={uploadPending.length}                 onConfirm={confirmUpload}            onCancel={() => setUploadPending(null)} />}
 
+      <style>{`
+        @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(16px) scale(0.97) } to { opacity: 1; transform: translateY(0) scale(1) } }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+      `}</style>
       <div
         className="h-screen flex flex-col overflow-hidden"
         style={{ background: VS.bg, color: VS.text, fontFamily: "'Segoe UI', system-ui, sans-serif", fontSize: "13px" }}
@@ -549,15 +666,30 @@ export default function Room() {
 
         {/* ══ TITLE BAR ══ */}
         <div
-          className="h-8 flex items-center justify-between px-4 select-none shrink-0"
-          style={{ background: "#323233", borderBottom: `1px solid #3c3c3c` }}
+          className="h-9 flex items-center justify-between px-4 select-none shrink-0"
+          style={{
+            background: "linear-gradient(180deg, #161b22 0%, #0d1117 100%)",
+            borderBottom: "1px solid #21262d",
+          }}
         >
           {/* Left – Brand */}
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold" style={{ color: "#cccccc" }}>
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-5 h-5 rounded flex items-center justify-center text-[11px] font-black shrink-0"
+              style={{ background: "linear-gradient(135deg, #58a6ff, #a371f7)", boxShadow: "0 0 10px #58a6ff40" }}
+            >
+              ⚡
+            </div>
+            <span
+              className="text-[12px] font-bold tracking-tight"
+              style={{ background: "linear-gradient(90deg, #58a6ff, #a371f7)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+            >
               CodeFusionAI
             </span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "#007acc22", color: "#007acc", border: "1px solid #007acc44" }}>
+            <span
+              className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full"
+              style={{ background: "#58a6ff12", color: "#58a6ff", border: "1px solid #58a6ff25" }}
+            >
               Collaborative IDE
             </span>
           </div>
@@ -577,8 +709,10 @@ export default function Room() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigate("/dashboard")}
-              className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-opacity hover:opacity-80"
-              style={{ background: "#c42b1c", color: "#fff" }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150"
+              style={{ background: "#f8514918", color: "#f85149", border: "1px solid #f8514930" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "#f85149"; e.currentTarget.style.color = "#fff"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "#f8514918"; e.currentTarget.style.color = "#f85149"; }}
             >
               Leave Room
             </button>
@@ -591,7 +725,7 @@ export default function Room() {
           {/* ━━ ACTIVITY BAR ━━ */}
           <div
             className="w-12 shrink-0 flex flex-col items-center pt-1"
-            style={{ background: VS.activityBg, borderRight: `1px solid ${VS.border}` }}
+            style={{ background: "#0d1117", borderRight: "1px solid #21262d" }}
           >
             {/* Explorer */}
             <ActivityIcon
@@ -654,14 +788,17 @@ export default function Room() {
           {activePanel && (
             <div
               className="w-60 shrink-0 flex flex-col overflow-hidden"
-              style={{ background: VS.sidebarBg, borderRight: `1px solid ${VS.border}` }}
+              style={{ background: "#161b22", borderRight: "1px solid #21262d" }}
             >
               {/* Panel title */}
               <div
-                className="h-8 flex items-center justify-between px-3 shrink-0 uppercase text-[10px] font-bold tracking-widest"
-                style={{ color: VS.textMuted }}
+                className="h-8 flex items-center justify-between px-3 shrink-0"
+                style={{ borderBottom: "1px solid #21262d" }}
               >
-                <span>{activePanel === "explorer" ? "Explorer" : "Collaborators"}</span>
+                <span
+                  className="text-[10px] font-bold tracking-widest uppercase"
+                  style={{ color: "#7d8590" }}
+                >{activePanel === "explorer" ? "Explorer" : "Collaborators"}</span>
                 {activePanel === "explorer" && (
                   <div className="flex items-center gap-0.5">
                     {/* New file */}
@@ -707,22 +844,23 @@ export default function Room() {
 
               {/* ── EXPLORER ── */}
               {activePanel === "explorer" && (
-                <div className="flex-1 overflow-y-auto" style={{ scrollbarWidth: "thin", scrollbarColor: "#424242 transparent" }}>
-                  {/* Workspace section title */}
+                <div className="flex-1 overflow-y-auto">
+                  {/* Workspace section */}
                   <div
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold uppercase tracking-wider cursor-default select-none"
-                    style={{ color: VS.text }}
+                    className="flex items-center gap-1.5 px-2.5 py-2 text-[10px] font-bold uppercase tracking-widest cursor-default select-none"
+                    style={{ color: "#484f58" }}
                   >
-                    <svg width="9" height="9" viewBox="0 0 10 10" style={{ fill: VS.text }}>
+                    <svg width="8" height="8" viewBox="0 0 10 10" style={{ fill: "#484f58" }}>
                       <path d="M2 1l6 4-6 4V1z" />
                     </svg>
                     Workspace
                   </div>
                   <div className="pb-4">
                     {files.length === 0 ? (
-                      <p className="px-4 py-3 text-xs italic" style={{ color: VS.textMuted }}>
-                        No files. Click + to create one.
-                      </p>
+                      <div className="px-4 py-6 text-center">
+                        <div className="text-3xl mb-2" style={{ opacity: 0.15 }}>📂</div>
+                        <p className="text-xs italic" style={{ color: "#484f58" }}>No files yet. Click + to create one.</p>
+                      </div>
                     ) : (
                       renderTree(treeNodes)
                     )}
@@ -732,26 +870,29 @@ export default function Room() {
 
               {/* ── COLLABORATORS ── */}
               {activePanel === "users" && (
-                <div className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-1" style={{ scrollbarWidth: "thin", scrollbarColor: "#424242 transparent" }}>
+                <div className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-1.5">
                   {users.length === 0 ? (
-                    <p className="px-2 py-3 text-xs italic" style={{ color: VS.textMuted }}>
-                      No other collaborators in this room yet.
-                    </p>
+                    <div className="px-3 py-8 text-center">
+                      <div className="text-3xl mb-2" style={{ opacity: 0.15 }}>👥</div>
+                      <p className="text-xs italic" style={{ color: "#484f58" }}>No collaborators yet.</p>
+                    </div>
                   ) : (
                     users.map((u, i) => (
                       <div
                         key={i}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded"
-                        style={{ background: VS.hover }}
+                        className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg"
+                        style={{ background: "#1c2128", border: "1px solid #21262d" }}
                       >
                         <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                          style={{ background: VS.accent, color: "#fff" }}
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                          style={{ background: "linear-gradient(135deg, #58a6ff, #a371f7)", color: "#fff", boxShadow: "0 0 8px #58a6ff30" }}
                         >
                           {(u.username || "U")[0].toUpperCase()}
                         </div>
-                        <span className="text-[12px] truncate" style={{ color: VS.text }}>{u.username || "User"}</span>
-                        <span className="ml-auto w-2 h-2 rounded-full shrink-0" style={{ background: VS.green }} />
+                        <span className="text-[12px] truncate" style={{ color: "#e6edf3" }}>{u.username || "User"}</span>
+                        <div className="ml-auto flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb950" }} />
+                        </div>
                       </div>
                     ))
                   )}
@@ -763,40 +904,42 @@ export default function Room() {
           {/* ━━ EDITOR COLUMN ━━ */}
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
 
-            {/* ── TOOLBAR (Run, Language) ── */}
+            {/* ── TOOLBAR ── */}
             <div
               className="h-9 shrink-0 flex items-center justify-between px-3 gap-3"
-              style={{ background: "#2d2d2d", borderBottom: `1px solid ${VS.border}` }}
+              style={{ background: "#161b22", borderBottom: "1px solid #21262d" }}
             >
-              {/* Left: Language dropdown styled like VS Code language selector */}
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <div
-                  className="flex items-center gap-1.5 px-2 py-1 rounded text-xs cursor-pointer hover:opacity-80 transition"
-                  style={{ color: VS.textMuted, border: `1px solid ${VS.border}`, background: VS.input }}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-all duration-150"
+                  style={{ color: "#7d8590", border: "1px solid #30363d", background: "#0d1117" }}
+                  onMouseEnter={(e) => e.currentTarget.style.borderColor = "#484f58"}
+                  onMouseLeave={(e) => e.currentTarget.style.borderColor = "#30363d"}
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                    <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   <select
                     value={language}
                     onChange={(e) => setLanguage(e.target.value)}
-                    className="bg-transparent outline-none cursor-pointer text-[12px]"
-                    style={{ color: VS.text }}
+                    className="bg-transparent outline-none cursor-pointer text-[12px] font-medium"
+                    style={{ color: "#e6edf3" }}
                   >
                     {LANGUAGES.map((l) => (
-                      <option key={l.id} value={l.id} style={{ background: "#1e1e1e" }}>{l.label}</option>
+                      <option key={l.id} value={l.id} style={{ background: "#161b22" }}>{l.label}</option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              {/* Right: Run Code */}
               <button
                 onClick={() => setOutput(`▶  Running ${language} code...\n\n(Execution engine coming soon)\n`)}
-                className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-semibold transition-opacity hover:opacity-80"
-                style={{ background: "#388a34", color: "#fff" }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-150"
+                style={{ background: "linear-gradient(135deg, #238636, #2ea043)", color: "#fff", boxShadow: "0 2px 8px #23863640" }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = "0.88"}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
               >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="#fff"><path d="M1 1l8 4-8 4V1z" /></svg>
+                <svg width="9" height="9" viewBox="0 0 10 10" fill="#fff"><path d="M1 1l8 4-8 4V1z" /></svg>
                 Run Code
               </button>
             </div>
@@ -804,32 +947,35 @@ export default function Room() {
             {/* ── TAB BAR ── */}
             <div
               className="flex items-end overflow-x-auto shrink-0"
-              style={{ background: VS.tabBarBg, borderBottom: `1px solid ${VS.border}`, scrollbarWidth: "none", minHeight: "35px" }}
+              style={{ background: "#0d1117", borderBottom: "1px solid #21262d", scrollbarWidth: "none", minHeight: "35px" }}
             >
               {openTabs.map((tab) => {
                 const isActive = tab === activeFile;
                 const fileItem = files.find((f) => f.path === tab);
+                const fileColor = getFileColor(tab.split("/").pop());
                 return (
                   <div
                     key={tab}
-                    className="flex items-center gap-2 px-3 shrink-0 cursor-pointer group"
+                    className="flex items-center gap-2 px-3.5 shrink-0 cursor-pointer group transition-colors duration-100"
                     style={{
                       height: "35px",
-                      background: isActive ? VS.tabActive : VS.tabInactive,
-                      borderRight: `1px solid ${VS.border}`,
-                      borderTop: isActive ? `1px solid ${VS.accent}` : "1px solid transparent",
-                      color: isActive ? VS.text : VS.textMuted,
-                      minWidth: "100px",
-                      maxWidth: "180px",
+                      background: isActive ? "#161b22" : "transparent",
+                      borderRight: "1px solid #21262d",
+                      borderTop: isActive ? `1px solid ${fileColor}` : "1px solid transparent",
+                      color: isActive ? "#e6edf3" : "#484f58",
+                      minWidth: "110px",
+                      maxWidth: "190px",
                     }}
+                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = "#7d8590"; }}
+                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = "#484f58"; }}
                     onClick={() => { if (fileItem) openFile(tab, fileItem.content); }}
                   >
                     <FileIcon filename={tab.split("/").pop()} size={13} />
-                    <span className="text-[12px] truncate flex-1">{tab.split("/").pop()}</span>
+                    <span className="text-[12px] truncate flex-1 font-medium">{tab.split("/").pop()}</span>
                     <button
                       onClick={(e) => closeTab(e, tab)}
-                      className="w-4 h-4 flex items-center justify-center rounded text-[11px] opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity"
-                      style={{ color: VS.textMuted }}
+                      className="w-4 h-4 flex items-center justify-center rounded text-[12px] opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/10"
+                      style={{ color: "#7d8590" }}
                     >
                       ×
                     </button>
@@ -869,51 +1015,44 @@ export default function Room() {
             {/* ── TERMINAL / OUTPUT ── */}
             <div
               className="shrink-0 flex flex-col"
-              style={{ height: "180px", background: "#1e1e1e", borderTop: `1px solid ${VS.border}` }}
+              style={{ height: "185px", background: "#0d1117", borderTop: "1px solid #21262d" }}
             >
-              {/* Terminal title bar */}
+              {/* Terminal header */}
               <div
                 className="h-8 flex items-center justify-between px-3 shrink-0"
-                style={{ background: "#252526", borderBottom: `1px solid ${VS.border}` }}
+                style={{ background: "#161b22", borderBottom: "1px solid #21262d" }}
               >
-                <div className="flex items-center gap-3">
-                  <span className="text-[11px] font-semibold" style={{ color: VS.text }}>TERMINAL</span>
-                  <span className="text-[10px]" style={{ color: VS.textMuted }}>
-                    bash
-                  </span>
+                <div className="flex items-center gap-2">
+                  {/* macOS-style dots */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#f85149", boxShadow: "0 0 4px #f8514960" }} />
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#e3b341", boxShadow: "0 0 4px #e3b34160" }} />
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb95060" }} />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-widest ml-1" style={{ color: "#3fb950" }}>Terminal</span>
+                  <span className="text-[10px]" style={{ color: "#484f58" }}>— bash</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setOutput("Waiting for code execution...\n")}
-                    className="px-2 py-0.5 rounded text-[10px] hover:opacity-80 transition"
-                    style={{ color: VS.textMuted, border: `1px solid ${VS.border}` }}
-                  >
-                    Clear
-                  </button>
-                  <button
-                    className="w-5 h-5 flex items-center justify-center rounded hover:opacity-70"
-                    style={{ color: VS.textMuted }}
-                  >
-                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                      <path d="M1 9l8-8M1 1h8v8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                    </svg>
-                  </button>
-                </div>
+                <button
+                  onClick={() => setOutput("Waiting for code execution...\n")}
+                  className="px-2 py-0.5 rounded text-[10px] transition-all duration-150"
+                  style={{ color: "#484f58", border: "1px solid #30363d" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = "#e6edf3"; e.currentTarget.style.borderColor = "#484f58"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = "#484f58"; e.currentTarget.style.borderColor = "#30363d"; }}
+                >
+                  Clear
+                </button>
               </div>
 
               {/* Output */}
-              <div
-                className="flex-1 overflow-auto px-4 py-2"
-                style={{ scrollbarWidth: "thin", scrollbarColor: "#424242 transparent" }}
-              >
+              <div className="flex-1 overflow-auto px-4 py-2.5">
                 <pre
                   className="text-[12px] leading-6 whitespace-pre-wrap"
-                  style={{ fontFamily: "'Consolas', 'Courier New', monospace", color: "#cccccc" }}
+                  style={{ fontFamily: "'Consolas', 'Courier New', monospace", color: "#e6edf3" }}
                 >
-                  <span style={{ color: VS.green }}>user@codefusion</span>
-                  <span style={{ color: VS.textMuted }}>:</span>
-                  <span style={{ color: "#4ec9b0" }}>~/{activeFile ? activeFile.split("/")[0] : "workspace"}</span>
-                  <span style={{ color: VS.textMuted }}>$ </span>
+                  <span style={{ color: "#3fb950", fontWeight: 600 }}>user@codefusion</span>
+                  <span style={{ color: "#484f58" }}>:</span>
+                  <span style={{ color: "#58a6ff" }}>~/{activeFile ? activeFile.split("/")[0] : "workspace"}</span>
+                  <span style={{ color: "#484f58" }}>$ </span>
                   <br />
                   {output}
                 </pre>
@@ -925,43 +1064,59 @@ export default function Room() {
         {/* ══ STATUS BAR ══ */}
         <div
           className="h-6 shrink-0 flex items-center justify-between px-3 select-none"
-          style={{ background: VS.statusBg, color: "#fff", fontSize: "11px" }}
+          style={{
+            background: "linear-gradient(90deg, #1f2937 0%, #111827 50%, #1f2937 100%)",
+            borderTop: "1px solid #21262d",
+            color: "#7d8590",
+            fontSize: "11px",
+          }}
         >
           {/* Left */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {/* Git branch */}
-            <div className="flex items-center gap-1">
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                <circle cx="5" cy="4" r="2" stroke="white" strokeWidth="1.3" />
-                <circle cx="11" cy="4" r="2" stroke="white" strokeWidth="1.3" />
-                <circle cx="5" cy="12" r="2" stroke="white" strokeWidth="1.3" />
-                <path d="M5 6v4M5 6c0 2 6 2 6-2" stroke="white" strokeWidth="1.3" />
+            <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded transition-colors duration-150 cursor-pointer"
+              style={{ color: "#58a6ff" }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "#58a6ff18"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            >
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+                <circle cx="5" cy="4" r="2" stroke="#58a6ff" strokeWidth="1.3" />
+                <circle cx="11" cy="4" r="2" stroke="#58a6ff" strokeWidth="1.3" />
+                <circle cx="5" cy="12" r="2" stroke="#58a6ff" strokeWidth="1.3" />
+                <path d="M5 6v4M5 6c0 2 6 2 6-2" stroke="#58a6ff" strokeWidth="1.3" />
               </svg>
-              <span>main</span>
+              <span className="font-medium">main</span>
             </div>
 
-            {/* Collab indicator */}
-            <div className="flex items-center gap-1">
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="white"><circle cx="5" cy="6" r="2.5" /><path d="M1 14v-1a4 4 0 0 1 8 0v1" /><circle cx="12" cy="6" r="2" /><path d="M15 14v-.5a3 3 0 0 0-3-3" /></svg>
-              <span>{users.length + 1} online</span>
+            {/* Online */}
+            <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded cursor-pointer transition-colors duration-150"
+              onMouseEnter={(e) => e.currentTarget.style.background = "#3fb95018"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            >
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb950" }} />
+              <span style={{ color: "#3fb950" }} className="font-medium">{users.length + 1} online</span>
             </div>
           </div>
 
           {/* Centre – room ID */}
-          <div className="flex items-center gap-1" style={{ opacity: 0.85 }}>
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="white"><rect x="2" y="4" width="12" height="9" rx="1" stroke="white" strokeWidth="1.3" fill="none" /><path d="M5 4V3a3 3 0 0 1 6 0v1" stroke="white" strokeWidth="1.3" /></svg>
-            <span className="font-mono" style={{ letterSpacing: "0.02em" }}>Room: {roomId}</span>
+          <div className="flex items-center gap-1.5" style={{ color: "#a371f7" }}>
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="1" stroke="#a371f7" strokeWidth="1.3" fill="none" /><path d="M5 4V3a3 3 0 0 1 6 0v1" stroke="#a371f7" strokeWidth="1.3" /></svg>
+            <span className="font-mono font-medium" style={{ letterSpacing: "0.03em" }}>Room: {roomId}</span>
           </div>
 
           {/* Right */}
-          <div className="flex items-center gap-4">
-            <span>{LANGUAGES.find((l) => l.id === language)?.label || language}</span>
+          <div className="flex items-center gap-3">
+            <span className="px-1.5 py-0.5 rounded cursor-pointer transition-colors duration-150"
+              style={{ color: LANGUAGES.find((l) => l.id === language)?.color || "#7d8590" }}
+              onMouseEnter={(e) => e.currentTarget.style.background = "#ffffff10"}
+              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            >{LANGUAGES.find((l) => l.id === language)?.label || language}</span>
             <span>UTF-8</span>
             <span>CRLF</span>
             <span>{fileCount} file{fileCount !== 1 ? "s" : ""}</span>
-            <div className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full" style={{ background: "#4ec9b0" }} />
-              <span>Ready</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb950" }} />
+              <span style={{ color: "#3fb950" }}>Ready</span>
             </div>
           </div>
         </div>
