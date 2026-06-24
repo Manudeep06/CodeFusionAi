@@ -83,6 +83,16 @@ router.post("/", async (req, res) => {
           )} && java -cp ${tempDir} Main`;
         break;
 
+      case "html":
+      case "css":
+      case "json":
+        fileName = `temp.${language}`;
+        fs.writeFileSync(path.join(tempDir, fileName), code);
+        return res.json({
+          success: true,
+          output: `${language.toUpperCase()} file saved successfully.`,
+        });
+
       default:
         return res.status(400).json({
           success: false,

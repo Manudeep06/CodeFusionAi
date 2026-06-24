@@ -1,0 +1,20 @@
+.form-label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #1F2937;
+}
+
+.remove-btn {
+  background: transparent;
+  color: #dc2626;
+  border: none;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.remove-btn:hover {
+  background: #fef2f2;
+}

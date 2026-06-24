@@ -1,0 +1,32 @@
+digraph G {
+    node [shape=circle, style=filled, color=lightblue, fontname="Arial"];
+    "00BB1610" [label="L:-1\nP:0\nW:0\nB:63"];
+    "00BB1610" -> "00BB1638";
+    "00BB1638" [label="L:0\nP:0\nW:0\nB:63"];
+    "00BB1638" -> "00BB1688";
+    "00BB1688" [label="L:1\nP:11\nW:1\nB:63"];
+    "00BB1688" -> "00BB1728";
+    "00BB1728" [label="L:2\nP:32\nW:12\nB:63"];
+    "00BB1688" -> "00BB1750";
+    "00BB1750" [label="L:2\nP:11\nW:1\nB:57"];
+    "00BB1638" -> "00BB16B0";
+    "00BB16B0" [label="L:1\nP:0\nW:0\nB:53"];
+    "00BB16B0" -> "00BB1778";
+    "00BB1778" [label="L:2\nP:21\nW:11\nB:53"];
+    "00BB16B0" -> "00BB17A0";
+    "00BB17A0" [label="L:2\nP:0\nW:0\nB:48"];
+    "00BB1610" -> "00BB1660";
+    "00BB1660" [label="L:0\nP:0\nW:0\nB:63"];
+    "00BB1660" -> "00BB16D8";
+    "00BB16D8" [label="L:1\nP:11\nW:1\nB:63"];
+    "00BB16D8" -> "00BB17C8";
+    "00BB17C8" [label="L:2\nP:32\nW:12\nB:63"];
+    "00BB16D8" -> "00BB17F0";
+    "00BB17F0" [label="L:2\nP:11\nW:1\nB:57"];
+    "00BB1660" -> "00BB1700";
+    "00BB1700" [label="L:1\nP:0\nW:0\nB:53"];
+    "00BB1700" -> "00BB1818";
+    "00BB1818" [label="L:2\nP:21\nW:11\nB:53"];
+    "00BB1700" -> "00BB1840";
+    "00BB1840" [label="L:2\nP:0\nW:0\nB:48"];
+}

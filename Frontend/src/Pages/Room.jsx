@@ -119,7 +119,7 @@ function ActivityIcon({ title, active, onClick, children }) {
       {active && (
         <span
           className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r"
-          style={{ background: "linear-gradient(180deg, #58a6ff, #a371f7)" }}
+          style={{ background: "#21262d" }}
         />
       )}
       {children}
@@ -260,7 +260,7 @@ function DeleteModal({ path, isFolder, onConfirm, onCancel }) {
           animation: "slideUp 0.18s cubic-bezier(0.34,1.56,0.64,1)",
         }}
       >
-        <div className="h-0.5" style={{ background: "linear-gradient(90deg, #f85149, #ff6b6b)" }} />
+        <div className="h-0.5" style={{ background: "#21262d" }} />
 
         <div className="flex items-center gap-3 px-5 pt-5 pb-4">
           <div className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0"
@@ -294,7 +294,7 @@ function DeleteModal({ path, isFolder, onConfirm, onCancel }) {
             >Cancel</button>
             <button onClick={onConfirm}
               className="px-5 py-2 rounded-lg text-xs font-bold transition-all"
-              style={{ background: "linear-gradient(135deg, #f85149, #ff6b6b)", color: "#fff", boxShadow: "0 4px 14px #f8514930" }}
+              style={{ background: "#21262d", color: "#fff", boxShadow: "0 4px 14px #f8514930" }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = "0.88"}
               onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
             >Delete</button>
@@ -321,7 +321,7 @@ function UploadModal({ fileCount, onConfirm, onCancel }) {
           animation: "slideUp 0.18s cubic-bezier(0.34,1.56,0.64,1)",
         }}
       >
-        <div className="h-0.5" style={{ background: "linear-gradient(90deg, #58a6ff, #a371f7)" }} />
+        <div className="h-0.5" style={{ background: "#21262d" }} />
         <div className="flex items-center gap-3 px-5 pt-5 pb-4">
           <div className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0"
             style={{ background: "#58a6ff18", border: "1px solid #58a6ff30" }}>📤</div>
@@ -348,7 +348,7 @@ function UploadModal({ fileCount, onConfirm, onCancel }) {
             >Cancel</button>
             <button onClick={onConfirm}
               className="px-5 py-2 rounded-lg text-xs font-bold transition-all"
-              style={{ background: "linear-gradient(135deg, #58a6ff, #a371f7)", color: "#fff", boxShadow: "0 4px 14px #58a6ff30" }}
+              style={{ background: "#21262d", color: "#fff", boxShadow: "0 4px 14px #58a6ff30" }}
               onMouseEnter={(e) => e.currentTarget.style.opacity = "0.88"}
               onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
             >Upload & Replace</button>
@@ -404,15 +404,10 @@ export default function Room() {
   const photoURL    = user?.photoURL || "";
 
   /* ── State ── */
-  const [files,           setFiles]           = useState([{
-    path: "main.js",
-    content: BOILERPLATES.javascript,
-    isFolder: false,
-    language: "javascript",
-  }]);
-  const [code,            setCode]            = useState(BOILERPLATES.javascript);
-  const [activeFile,      setActiveFile]      = useState("main.js");
-  const [openTabs,        setOpenTabs]        = useState(["main.js"]);
+  const [files,           setFiles]           = useState([]);
+  const [code,            setCode]            = useState("");
+  const [activeFile,      setActiveFile]      = useState(null);
+  const [openTabs,        setOpenTabs]        = useState([]);
   const [expandedFolders, setExpandedFolders] = useState({});
   const [language,        setLanguage]        = useState("javascript");
   const [users,           setUsers]           = useState([]);
@@ -425,32 +420,52 @@ export default function Room() {
   const [aiLoading,       setAiLoading]       = useState(false);
   const aiBottomRef = useRef(null);
 
-  /* ── Terminal resize ── */
+  /* ── Terminal & Sidebar resize ── */
   const [terminalHeight, setTerminalHeight] = useState(185);
-  const isDragging = useRef(false);
+  const isDraggingTerm = useRef(false);
   const dragStartY = useRef(0);
   const dragStartH = useRef(0);
 
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const isDraggingSidebar = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartW = useRef(0);
+
   const onDividerMouseDown = (e) => {
-    isDragging.current  = true;
-    dragStartY.current  = e.clientY;
-    dragStartH.current  = terminalHeight;
+    isDraggingTerm.current = true;
+    dragStartY.current = e.clientY;
+    dragStartH.current = terminalHeight;
     document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  const onSidebarDividerMouseDown = (e) => {
+    isDraggingSidebar.current = true;
+    dragStartX.current = e.clientX;
+    dragStartW.current = sidebarWidth;
+    document.body.style.cursor = "ew-resize";
     document.body.style.userSelect = "none";
   };
 
   useEffect(() => {
     const onMove = (e) => {
-      if (!isDragging.current) return;
-      const delta  = dragStartY.current - e.clientY;
-      const newH   = Math.max(80, Math.min(600, dragStartH.current + delta));
-      setTerminalHeight(newH);
+      if (isDraggingTerm.current) {
+        const delta = dragStartY.current - e.clientY;
+        const newH = Math.max(80, Math.min(600, dragStartH.current + delta));
+        setTerminalHeight(newH);
+      } else if (isDraggingSidebar.current) {
+        const delta = e.clientX - dragStartX.current;
+        const newW = Math.max(160, Math.min(480, dragStartW.current + delta));
+        setSidebarWidth(newW);
+      }
     };
     const onUp = () => {
-      if (!isDragging.current) return;
-      isDragging.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      if (isDraggingTerm.current || isDraggingSidebar.current) {
+        isDraggingTerm.current = false;
+        isDraggingSidebar.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup",   onUp);
@@ -465,11 +480,21 @@ export default function Room() {
   /* ── Refs ── */
   const activeFileRef = useRef("main.js");
   const fileInputRef  = useRef(null);
+  
+  const editorRef = useRef(null);
+  const decorationsRef = useRef([]);
+  const remoteCursorsRef = useRef({});
+  const contentWidgetsRef = useRef({});
+  const usersRef = useRef([]);
 
   useEffect(() => { activeFileRef.current = activeFile; }, [activeFile]);
+  useEffect(() => { usersRef.current = users; }, [users]);
 
   /* ── Sync language whenever active file changes ── */
   useEffect(() => {
+    if (socket && socket.connected) {
+      socket.emit("update-presence", { roomId, activeFile });
+    }
     if (!activeFile) return;
     const f = files.find((file) => file.path === activeFile);
     if (f && f.language) {
@@ -478,7 +503,7 @@ export default function Room() {
       const lang = getLangByExt(activeFile);
       if (lang) setLanguage(lang.id);
     }
-  }, [activeFile, files]);
+  }, [activeFile, files, roomId]);
 
   /* ── Socket ── */
   useEffect(() => {
@@ -539,6 +564,57 @@ export default function Room() {
 
     socket.on("room-users", setUsers);
 
+    socket.on("cursor-update", ({ userId, position, activeFile: remoteActiveFile }) => {
+      if (!editorRef.current || !window.monaco) return;
+      
+      // Cleanup existing widget
+      if (contentWidgetsRef.current[userId]) {
+        editorRef.current.removeContentWidget(contentWidgetsRef.current[userId]);
+        delete contentWidgetsRef.current[userId];
+      }
+      
+      if (remoteActiveFile !== activeFileRef.current) {
+        delete remoteCursorsRef.current[userId];
+      } else {
+        const remoteUser = usersRef.current.find(u => u.userId === userId);
+        const username = remoteUser ? remoteUser.username : "User";
+        remoteCursorsRef.current[userId] = { position, username };
+        
+        // Add new name widget
+        const domNode = document.createElement("div");
+        domNode.innerHTML = username;
+        domNode.style.background = "#58a6ff";
+        domNode.style.color = "white";
+        domNode.style.fontSize = "10px";
+        domNode.style.padding = "2px 4px";
+        domNode.style.borderRadius = "3px";
+        domNode.style.whiteSpace = "nowrap";
+        domNode.style.pointerEvents = "none";
+        domNode.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+        domNode.style.zIndex = "10";
+        
+        const widget = {
+          getId: () => `cursor-widget-${userId}`,
+          getDomNode: () => domNode,
+          getPosition: () => ({
+            position: { lineNumber: position.lineNumber, column: position.column },
+            preference: [window.monaco.editor.ContentWidgetPositionPreference.ABOVE, window.monaco.editor.ContentWidgetPositionPreference.BELOW]
+          })
+        };
+        
+        editorRef.current.addContentWidget(widget);
+        contentWidgetsRef.current[userId] = widget;
+      }
+
+      decorationsRef.current = editorRef.current.deltaDecorations(
+        decorationsRef.current,
+        Object.entries(remoteCursorsRef.current).map(([id, data]) => ({
+          range: new window.monaco.Range(data.position.lineNumber, data.position.column, data.position.lineNumber, data.position.column),
+          options: { className: "remote-cursor", stickiness: 1 } // stickiness: NeverGrowsWhenTypingAtEdges
+        }))
+      );
+    });
+
     socket.on("run-code-finished", () => {
       setIsRunning(false);
     });
@@ -547,6 +623,7 @@ export default function Room() {
       socket.off("room-joined");
       socket.off("receive-code");
       socket.off("room-users");
+      socket.off("cursor-update");
       socket.off("run-code-finished");
     };
   }, [roomId]);
@@ -580,12 +657,22 @@ export default function Room() {
   };
 
   const handleCodeChange = (value) => {
-    const updated = files.map((f) => f.path === activeFile ? { ...f, content: value || "" } : f);
-    setFiles(updated); setCode(value || ""); emitFiles(updated);
+    setCode(value);
+    setFiles((prev) => prev.map((f) => (f.path === activeFile ? { ...f, content: value } : f)));
+    emitFiles(files.map((f) => (f.path === activeFile ? { ...f, content: value } : f)));
+  };
+
+  const handleEditorMount = (editor, monaco) => {
+    editorRef.current = editor;
+    editor.onDidChangeCursorPosition((e) => {
+      if (socket && socket.connected) {
+        socket.emit("cursor-change", { roomId, position: e.position });
+      }
+    });
   };
 
   /* ── Create ── */
-  const confirmCreate = (name) => {
+  const confirmCreate = async (name) => {
     const { parentPath, isFolder } = newItemModal;
     const itemPath = parentPath ? `${parentPath}/${name}` : name;
     const lang = getLangByExt(name);
@@ -597,6 +684,23 @@ export default function Room() {
       content: initialContent, 
       language: langId 
     };
+
+    if (isFolder) {
+      try {
+        await fetch("http://localhost:5000/api/filesystem/folder", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            folderName: itemPath,
+          }),
+        });
+      } catch (error) {
+        console.log(error);
+      }
+    }
+
     const updated  = [...files, newItem];
     setFiles(updated);
     if (!isFolder) openFile(itemPath, initialContent);
@@ -628,7 +732,10 @@ export default function Room() {
     });
     const items = [];
     for (const f of all) {
-      try { items.push({ path: f.webkitRelativePath, content: await f.text(), isFolder: false }); }
+      try { 
+        if (f.size > 10 * 1024 * 1024) continue; // Skip files > 10MB to avoid crashing
+        items.push({ path: f.webkitRelativePath, content: await f.text(), isFolder: false }); 
+      }
       catch (err) { console.error(err); }
     }
     if (items.length) setUploadPending(items);
@@ -823,6 +930,12 @@ export default function Room() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+        .remote-cursor {
+          width: 2px !important;
+          background-color: #58a6ff !important;
+          position: absolute;
+          z-index: 10;
+        }
       `}</style>
       <div
         className="h-screen flex flex-col overflow-hidden"
@@ -833,7 +946,7 @@ export default function Room() {
         <div
           className="h-9 flex items-center justify-between px-4 select-none shrink-0"
           style={{
-            background: "linear-gradient(180deg, #161b22 0%, #0d1117 100%)",
+            background: "#21262d",
             borderBottom: "1px solid #21262d",
           }}
         >
@@ -970,10 +1083,11 @@ export default function Room() {
 
           {/* ━━ SIDEBAR PANEL ━━ */}
           {activePanel && (
-            <div
-              className="w-60 shrink-0 flex flex-col overflow-hidden"
-              style={{ background: "#161b22", borderRight: "1px solid #21262d" }}
-            >
+            <>
+              <div
+                className="shrink-0 flex flex-col overflow-hidden"
+                style={{ width: `${sidebarWidth}px`, background: "#161b22", borderRight: "1px solid #21262d" }}
+              >
               {/* Panel title */}
               <div
                 className="h-8 flex items-center justify-between px-3 shrink-0"
@@ -1073,11 +1187,14 @@ export default function Room() {
                       >
                         <div
                           className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                          style={{ background: "linear-gradient(135deg, #58a6ff, #a371f7)", color: "#fff", boxShadow: "0 0 8px #58a6ff30" }}
+                          style={{ background: "#58a6ff", color: "#fff", boxShadow: "0 0 8px #58a6ff30" }}
                         >
                           {(u.username || "U")[0].toUpperCase()}
                         </div>
-                        <span className="text-[12px] truncate" style={{ color: "#e6edf3" }}>{u.username || "User"}</span>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="text-[12px] truncate leading-tight" style={{ color: "#e6edf3" }}>{u.username || "User"}</span>
+                          <span className="text-[10px] truncate leading-tight mt-0.5" style={{ color: "#7d8590" }}>{u.activeFile || "Idle"}</span>
+                        </div>
                         <div className="ml-auto flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb950" }} />
                         </div>
@@ -1098,7 +1215,7 @@ export default function Room() {
                           <div className="flex items-center gap-1.5 mb-0.5">
                             <div
                               className="w-4 h-4 rounded flex items-center justify-center text-[8px] font-black"
-                              style={{ background: "linear-gradient(135deg, #a371f7, #58a6ff)", color: "#fff" }}
+                              style={{ background: "#21262d", color: "#fff" }}
                             >✦</div>
                             <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "#a371f7" }}>AI</span>
                           </div>
@@ -1107,7 +1224,7 @@ export default function Room() {
                           className="max-w-full rounded-lg px-3 py-2 text-[12px] leading-5 whitespace-pre-wrap break-words"
                           style={{
                             background: msg.role === "user"
-                              ? "linear-gradient(135deg, #58a6ff22, #a371f722)"
+                              ? "#21262d"
                               : "#1c2128",
                             border: msg.role === "user"
                               ? "1px solid #58a6ff30"
@@ -1121,7 +1238,7 @@ export default function Room() {
                     ))}
                     {aiLoading && (
                       <div className="flex items-center gap-2 px-1">
-                        <div className="w-4 h-4 rounded flex items-center justify-center text-[8px]" style={{ background: "linear-gradient(135deg, #a371f7, #58a6ff)", color: "#fff" }}>✦</div>
+                        <div className="w-4 h-4 rounded flex items-center justify-center text-[8px]" style={{ background: "#21262d", color: "#fff" }}>✦</div>
                         <div className="flex gap-1">
                           {[0,1,2].map((j) => (
                             <span key={j} className="w-1.5 h-1.5 rounded-full" style={{ background: "#a371f7", animation: `pulse 1s ${j * 0.2}s infinite` }} />
@@ -1204,7 +1321,7 @@ export default function Room() {
                         className="w-7 h-7 flex items-center justify-center rounded-lg shrink-0 transition-all duration-150"
                         style={{
                           background: aiInput.trim() && !aiLoading
-                            ? "linear-gradient(135deg, #a371f7, #58a6ff)"
+                            ? "#21262d"
                             : "#21262d",
                           color: aiInput.trim() && !aiLoading ? "#fff" : "#484f58",
                         }}
@@ -1236,131 +1353,171 @@ export default function Room() {
 
 
             </div>
+              {/* ── HORIZONTAL DRAG DIVIDER ── */}
+              <div
+                onMouseDown={onSidebarDividerMouseDown}
+                className="shrink-0 flex items-center justify-center"
+                style={{
+                  width: "5px",
+                  background: "#21262d",
+                  cursor: "ew-resize",
+                  position: "relative",
+                  zIndex: 10,
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#58a6ff"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "#21262d"}
+                title="Drag to resize sidebar"
+              >
+                <div style={{ height: "40px", width: "2px", borderRadius: "1px", background: "inherit", opacity: 0.4 }} />
+              </div>
+            </>
           )}
 
           {/* ━━ EDITOR COLUMN ━━ */}
-          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
 
-            {/* ── TOOLBAR ── */}
-            <div
-              className="h-9 shrink-0 flex items-center justify-between px-3 gap-3"
-              style={{ background: "#161b22", borderBottom: "1px solid #21262d" }}
-            >
-              <div className="flex items-center gap-2">
-                <div
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-all duration-150"
-                  style={{ color: "#7d8590", border: "1px solid #30363d", background: "#0d1117" }}
-                  onMouseEnter={(e) => e.currentTarget.style.borderColor = "#484f58"}
-                  onMouseLeave={(e) => e.currentTarget.style.borderColor = "#30363d"}
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                    <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <span
-                    className="bg-transparent outline-none text-[12px] font-medium"
-                    style={{ color: "#e6edf3", cursor: "default" }}
-                  >
-                    {LANGUAGES.find(l => l.id === language)?.label || "Text"}
-                  </span>
+            {openTabs.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center select-none" style={{ background: "#0d1117" }}>
+                <div className="w-20 h-20 mb-6 rounded-2xl flex items-center justify-center text-4xl" style={{ background: "#21262d", border: "1px solid #58a6ff30", boxShadow: "0 0 40px #a371f720", animation: "pulse 3s infinite alternate" }}>
+                  ⚡
+                </div>
+                <h2 className="text-xl font-bold mb-2 tracking-tight" style={{ color: "#e6edf3" }}>CodeFusionAI Workspace</h2>
+                <p className="text-[13px] mb-8" style={{ color: "#7d8590" }}>Select a file from the explorer or create a new one to begin.</p>
+                
+                <div className="flex gap-4">
+                  <button onClick={() => setNewItemModal({ parentPath: "", isFolder: false })} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-200 hover:scale-105" style={{ background: "#1f6feb", color: "#fff", boxShadow: "0 8px 24px #1f6feb40" }}>
+                    Create File
+                  </button>
+                  <button onClick={() => fileInputRef.current?.click()} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-200 hover:scale-105" style={{ background: "#21262d", color: "#e6edf3", border: "1px solid #30363d" }} onMouseEnter={(e) => e.currentTarget.style.borderColor="#58a6ff"} onMouseLeave={(e) => e.currentTarget.style.borderColor="#30363d"}>
+                    Upload Project
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={runCode}
-                disabled={isRunning}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-150"
-                style={{ 
-                  background: isRunning ? "#21262d" : "linear-gradient(135deg, #238636, #2ea043)", 
-                  color: isRunning ? "#858585" : "#fff", 
-                  boxShadow: isRunning ? "none" : "0 2px 8px #23863640",
-                  cursor: isRunning ? "not-allowed" : "pointer"
-                }}
-                onMouseEnter={(e) => { if (!isRunning) e.currentTarget.style.opacity = "0.88"; }}
-                onMouseLeave={(e) => { if (!isRunning) e.currentTarget.style.opacity = "1"; }}
-              >
-                {isRunning ? (
-                  <>
-                    <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ animation: "spin 1s linear infinite" }}>
-                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" />
-                      <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
-                    </svg>
-                    Running...
-                  </>
-                ) : (
-                  <>
-                    <svg width="9" height="9" viewBox="0 0 10 10" fill="#fff"><path d="M1 1l8 4-8 4V1z" /></svg>
-                    Run Code
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* ── TAB BAR ── */}
-            <div
-              className="flex items-end overflow-x-auto shrink-0"
-              style={{ background: "#0d1117", borderBottom: "1px solid #21262d", scrollbarWidth: "none", minHeight: "35px" }}
-            >
-              {openTabs.map((tab) => {
-                const isActive = tab === activeFile;
-                const fileItem = files.find((f) => f.path === tab);
-                const fileColor = getFileColor(tab.split("/").pop());
-                return (
-                  <div
-                    key={tab}
-                    className="flex items-center gap-2 px-3.5 shrink-0 cursor-pointer group transition-colors duration-100"
-                    style={{
-                      height: "35px",
-                      background: isActive ? "#161b22" : "transparent",
-                      borderRight: "1px solid #21262d",
-                      borderTop: isActive ? `1px solid ${fileColor}` : "1px solid transparent",
-                      color: isActive ? "#e6edf3" : "#484f58",
-                      minWidth: "110px",
-                      maxWidth: "190px",
-                    }}
-                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = "#7d8590"; }}
-                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = "#484f58"; }}
-                    onClick={() => { if (fileItem) openFile(tab, fileItem.content); }}
-                  >
-                    <FileIcon filename={tab.split("/").pop()} size={13} />
-                    <span className="text-[12px] truncate flex-1 font-medium">{tab.split("/").pop()}</span>
-                    <button
-                      onClick={(e) => closeTab(e, tab)}
-                      className="w-4 h-4 flex items-center justify-center rounded text-[12px] opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/10"
-                      style={{ color: "#7d8590" }}
+            ) : (
+              <div className="flex-1 flex flex-col min-h-0">
+                {/* ── TOOLBAR ── */}
+                <div
+                  className="h-9 shrink-0 flex items-center justify-between px-3 gap-3"
+                  style={{ background: "#161b22", borderBottom: "1px solid #21262d" }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-all duration-150"
+                      style={{ color: "#7d8590", border: "1px solid #30363d", background: "#0d1117" }}
+                      onMouseEnter={(e) => e.currentTarget.style.borderColor = "#484f58"}
+                      onMouseLeave={(e) => e.currentTarget.style.borderColor = "#30363d"}
                     >
-                      ×
-                    </button>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+                        <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      <span
+                        className="bg-transparent outline-none text-[12px] font-medium"
+                        style={{ color: "#e6edf3", cursor: "default" }}
+                      >
+                        {LANGUAGES.find(l => l.id === language)?.label || "Text"}
+                      </span>
+                    </div>
                   </div>
-                );
-              })}
-            </div>
+                  <button
+                    onClick={runCode}
+                    disabled={isRunning}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-150"
+                    style={{ 
+                      background: isRunning ? "#21262d" : "#238636", 
+                      color: isRunning ? "#858585" : "#fff", 
+                      boxShadow: isRunning ? "none" : "0 2px 8px #23863640",
+                      cursor: isRunning ? "not-allowed" : "pointer"
+                    }}
+                    onMouseEnter={(e) => { if (!isRunning) e.currentTarget.style.opacity = "0.88"; }}
+                    onMouseLeave={(e) => { if (!isRunning) e.currentTarget.style.opacity = "1"; }}
+                  >
+                    {isRunning ? (
+                      <>
+                        <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ animation: "spin 1s linear infinite" }}>
+                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" />
+                          <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
+                        </svg>
+                        Running...
+                      </>
+                    ) : (
+                      <>
+                        <svg width="9" height="9" viewBox="0 0 10 10" fill="#fff"><path d="M1 1l8 4-8 4V1z" /></svg>
+                        Run Code
+                      </>
+                    )}
+                  </button>
+                </div>
 
-            {/* ── MONACO EDITOR ── */}
-            <div className="flex-1 min-h-0">
-              <Editor
-                height="100%"
-                language={language}
-                theme="vs-dark"
-                value={code}
-                onChange={handleCodeChange}
-                options={{
-                  fontSize: 14,
-                  fontFamily: "'Consolas', 'Courier New', monospace",
-                  fontLigatures: true,
-                  lineHeight: 22,
-                  minimap: { enabled: true, scale: 0.8 },
-                  automaticLayout: true,
-                  padding: { top: 10 },
-                  scrollBeyondLastLine: false,
-                  smoothScrolling: true,
-                  cursorBlinking: "blink",
-                  renderLineHighlight: "line",
-                  bracketPairColorization: { enabled: true },
-                  guides: { bracketPairs: true },
-                  scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
-                  overviewRulerLanes: 0,
-                }}
-              />
-            </div>
+                {/* ── TAB BAR ── */}
+                <div
+                  className="flex items-end overflow-x-auto shrink-0"
+                  style={{ background: "#0d1117", borderBottom: "1px solid #21262d", scrollbarWidth: "none", minHeight: "35px" }}
+                >
+                  {openTabs.map((tab) => {
+                    const isActive = tab === activeFile;
+                    const fileItem = files.find((f) => f.path === tab);
+                    const fileColor = getFileColor(tab.split("/").pop());
+                    return (
+                      <div
+                        key={tab}
+                        className="flex items-center gap-2 px-3.5 shrink-0 cursor-pointer group transition-colors duration-100"
+                        style={{
+                          height: "35px",
+                          background: isActive ? "#161b22" : "transparent",
+                          borderRight: "1px solid #21262d",
+                          borderTop: isActive ? `1px solid ${fileColor}` : "1px solid transparent",
+                          color: isActive ? "#e6edf3" : "#484f58",
+                          minWidth: "110px",
+                          maxWidth: "190px",
+                        }}
+                        onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = "#7d8590"; }}
+                        onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = "#484f58"; }}
+                        onClick={() => { if (fileItem) openFile(tab, fileItem.content); }}
+                      >
+                        <FileIcon filename={tab.split("/").pop()} size={13} />
+                        <span className="text-[12px] truncate flex-1 font-medium">{tab.split("/").pop()}</span>
+                        <button
+                          onClick={(e) => closeTab(e, tab)}
+                          className="w-4 h-4 flex items-center justify-center rounded text-[12px] opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/10"
+                          style={{ color: "#7d8590" }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* ── MONACO EDITOR ── */}
+                <div className="flex-1 min-h-0">
+                  <Editor
+                    height="100%"
+                    language={language}
+                    theme="vs-dark"
+                    value={code}
+                    onChange={handleCodeChange}
+                    onMount={handleEditorMount}
+                    options={{
+                      fontSize: 14,
+                      fontFamily: "'Consolas', 'Courier New', monospace",
+                      fontLigatures: true,
+                      lineHeight: 22,
+                      minimap: { enabled: true, scale: 0.8 },
+                      automaticLayout: true,
+                      padding: { top: 10 },
+                      scrollBeyondLastLine: false,
+                      smoothScrolling: true,
+                      cursorBlinking: "blink",
+                      renderLineHighlight: "line",
+                      bracketPairColorization: { enabled: true },
+                      guides: { bracketPairs: true },
+                      scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+                      overviewRulerLanes: 0,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             {/* ── DRAG DIVIDER ── */}
             <div
@@ -1387,7 +1544,7 @@ export default function Room() {
 
 
               {/* Output */}
-              <div className="flex-1 overflow-hidden px-4 py-2.5">
+              <div className="flex-1 overflow-hidden px-4 py-2.5 min-h-0">
                 <TerminalComponent />
               </div>
             </div>
@@ -1398,7 +1555,7 @@ export default function Room() {
         <div
           className="h-6 shrink-0 flex items-center justify-between px-3 select-none"
           style={{
-            background: "linear-gradient(90deg, #1f2937 0%, #111827 50%, #1f2937 100%)",
+            background: "#21262d",
             borderTop: "1px solid #21262d",
             color: "#7d8590",
             fontSize: "11px",

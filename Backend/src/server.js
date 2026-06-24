@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { createTerminal, terminals } from "./terminal/terminal.js";
 import fs from "fs";
 import path from "path";
+import fileSystemRoute from "./routes/fileSystem.js";
 
 dotenv.config();
 
@@ -21,18 +22,12 @@ const io = new Server(httpServer, {
     origin: "http://localhost:5173",
     methods: ["GET", "POST"],
   },
+  maxHttpBufferSize: 1e9, // 1 GB limit for large workspace uploads
 });
 
 const roomsCode = new Map();
 
-const INITIAL_WORKSPACE = JSON.stringify([
-  {
-    path: "main.js",
-    content: '// Welcome to CodeFusionAI 🚀\n\nconsole.log("Hello World!");\n',
-    isFolder: false,
-    language: "javascript",
-  },
-]);
+const INITIAL_WORKSPACE = JSON.stringify([]);
 
 const syncFilesToDisk = (codeString) => {
   try {
@@ -58,6 +53,7 @@ const syncFilesToDisk = (codeString) => {
     });
   } catch (err) {
     console.error("Sync error:", err);
+    require("fs").appendFileSync("C:/CodeFusionAI/Backend/sync-error.log", err.stack + "\n");
   }
 };
 
@@ -70,6 +66,7 @@ const broadcastRoomUsers = async (roomId) => {
       userId: s.id,
       username: s.username || "Developer",
       photoURL: s.photoURL || "",
+      activeFile: s.activeFile || null,
     }));
     io.to(roomId).emit("room-users", usersList);
   } catch (err) {
@@ -164,6 +161,22 @@ io.on("connection", (socket) => {
     syncFilesToDisk(code);
   });
 
+  // Real-Time Presence (Active File)
+  socket.on("update-presence", async ({ roomId, activeFile }) => {
+    socket.activeFile = activeFile;
+    await broadcastRoomUsers(roomId);
+  });
+
+  // Collaborative Cursors
+  socket.on("cursor-change", ({ roomId, position }) => {
+    socket.cursor = position;
+    socket.to(roomId).emit("cursor-update", {
+      userId: socket.id,
+      position,
+      activeFile: socket.activeFile
+    });
+  });
+
   // Handle disconnecting before socket leaves rooms to update counts
   socket.on("disconnecting", async () => {
     for (const roomId of socket.rooms) {
@@ -189,10 +202,20 @@ io.on("connection", (socket) => {
   // Real-Time Code Execution inside interactive terminal
   socket.on("run-code", ({ code, language }) => {
     try {
-      const ext = language === "python" ? "py" : language === "java" ? "java" : language === "cpp" ? "cpp" : language === "html" ? "html" : "js";
+      const EXT_MAP = {
+        javascript: "js",
+        python: "py",
+        java: "java",
+        cpp: "cpp",
+        html: "html",
+        css: "css",
+        json: "json"
+      };
+      const ext = EXT_MAP[language] || "txt";
       const fileName = `.temp_run.${ext}`;
       const projectRoot = path.resolve(process.cwd(), "..");
-      const filePath = path.join(projectRoot, fileName);
+      const workspacePath = path.join(projectRoot, "workspace");
+      const filePath = path.join(workspacePath, fileName);
       
       fs.writeFileSync(filePath, code);
       
@@ -200,9 +223,30 @@ io.on("connection", (socket) => {
       if (term) {
         socket.emit("terminal:data", `\r\n\x1b[33m▶ Running ${language} code in local terminal...\x1b[0m\r\n`);
         const isWin = process.platform === "win32";
-        const javaCmd = isWin ? `javac ${fileName} ; if ($?) { java temp_run }` : `javac ${fileName} && java temp_run`;
-        const cppCmd = isWin ? `g++ ${fileName} -o temp_run.exe ; if ($?) { ./temp_run.exe }` : `g++ ${fileName} -o temp_run && ./temp_run`;
-        const cmd = language === "python" ? `python ${fileName}` : language === "java" ? javaCmd : language === "cpp" ? cppCmd : language === "html" ? `echo "HTML saved to ${fileName}. Open in browser."` : `node ${fileName}`;
+        let cmd = "";
+        
+        switch (language) {
+          case "javascript":
+            cmd = `node "${filePath}"`;
+            break;
+          case "python":
+            cmd = `python "${filePath}"`;
+            break;
+          case "java":
+            cmd = isWin ? `javac "${filePath}" ; if ($?) { java -cp "${workspacePath}" temp_run }` : `javac "${filePath}" && java -cp "${workspacePath}" temp_run`;
+            break;
+          case "cpp":
+            cmd = isWin ? `g++ "${filePath}" -o "${path.join(workspacePath, 'temp_run.exe')}" ; if ($?) { & "${path.join(workspacePath, 'temp_run.exe')}" }` : `g++ "${filePath}" -o "${path.join(workspacePath, 'temp_run')}" && "${path.join(workspacePath, 'temp_run')}"`;
+            break;
+          case "html":
+          case "css":
+          case "json":
+            cmd = isWin ? `echo '${language.toUpperCase()} file saved to ${filePath}.'` : `echo "${language.toUpperCase()} file saved to ${filePath}."`;
+            break;
+          default:
+            cmd = isWin ? `echo 'Execution not supported for language: ${language}'` : `echo "Execution not supported for language: ${language}"`;
+        }
+        
         term.write(`${cmd}\r`);
       }
     } catch (error) {
@@ -219,6 +263,10 @@ io.on("connection", (socket) => {
   });
 });
 
+app.use(
+  "/api/filesystem",
+  fileSystemRoute
+);
 
 app.get("/", (req, res) => {
   res.send("Backend Running");

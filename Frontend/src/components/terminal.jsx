@@ -21,13 +21,16 @@ function TerminalComponent() {
 
     term.open(terminalRef.current);
 
-    setTimeout(() => {
-      try {
-        fitAddon.fit();
-      } catch (err) {
-        console.log(err);
-      }
-    }, 100);
+    const resizeObserver = new ResizeObserver(() => {
+      window.requestAnimationFrame(() => {
+        try {
+          fitAddon.fit();
+        } catch (err) {
+          console.log("xterm fit error", err);
+        }
+      });
+    });
+    resizeObserver.observe(terminalRef.current);
 
     socket.on("terminal:data", (data) => {
       term.write(data);
@@ -38,6 +41,7 @@ function TerminalComponent() {
     });
 
     return () => {
+      resizeObserver.disconnect();
       socket.off("terminal:data");
       term.dispose();
     };
@@ -46,7 +50,8 @@ function TerminalComponent() {
   return (
     <div
       ref={terminalRef}
-      className="w-full h-full"
+      className="w-full h-full overflow-hidden relative"
+      style={{ minHeight: 0 }}
     />
   );
 }
