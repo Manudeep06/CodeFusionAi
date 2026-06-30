@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { createTerminal, terminals } from "./terminal/terminal.js";
 import fs from "fs";
 import path from "path";
+import os from "os";
 import fileSystemRoute from "./routes/fileSystem.js";
 
 dotenv.config();
@@ -29,10 +30,10 @@ const roomsCode = new Map();
 
 const INITIAL_WORKSPACE = JSON.stringify([]);
 
-const syncFilesToDisk = (codeString) => {
+const syncFilesToDisk = (roomId, codeString) => {
   try {
     const files = JSON.parse(codeString);
-    const workspaceRoot = path.join(path.resolve(process.cwd(), ".."), "workspace");
+    const workspaceRoot = path.join(os.tmpdir(), "codefusion-workspaces", roomId);
     
     if (!fs.existsSync(workspaceRoot)) {
       fs.mkdirSync(workspaceRoot, { recursive: true });
@@ -53,11 +54,9 @@ const syncFilesToDisk = (codeString) => {
     });
   } catch (err) {
     console.error("Sync error:", err);
-    require("fs").appendFileSync("C:/CodeFusionAI/Backend/sync-error.log", err.stack + "\n");
+    require("fs").appendFileSync(path.join(os.tmpdir(), "sync-error.log"), err.stack + "\n");
   }
 };
-
-syncFilesToDisk(INITIAL_WORKSPACE);
 
 const broadcastRoomUsers = async (roomId) => {
   try {
@@ -76,7 +75,6 @@ const broadcastRoomUsers = async (roomId) => {
 
 io.on("connection", (socket) => {
   console.log("User Connected:", socket.id);
-  createTerminal(socket);
 
   socket.emit("welcome", "Socket Connected Successfully");
 
@@ -85,13 +83,32 @@ io.on("connection", (socket) => {
     let roomId = "";
     let username = "Developer";
     let photoURL = "";
+    let roomName = "";
 
     if (typeof data === "object" && data !== null) {
       roomId = data.roomId;
       username = data.username || "Developer";
       photoURL = data.photoURL || "";
+      roomName = data.roomName || "";
     } else {
       roomId = data;
+    }
+
+    if (roomName) {
+      try {
+        const desktopPath = path.join(os.homedir(), "Desktop");
+        const workspaceDir = path.join(desktopPath, "CodeFusion Workspace");
+        
+        if (!fs.existsSync(workspaceDir)) {
+          fs.mkdirSync(workspaceDir, { recursive: true });
+        }
+        const roomFolder = path.join(workspaceDir, roomName);
+        if (!fs.existsSync(roomFolder)) {
+          fs.mkdirSync(roomFolder, { recursive: true });
+        }
+      } catch (err) {
+        console.error("Error creating room folder:", err);
+      }
     }
 
     socket.join(roomId);
@@ -100,6 +117,12 @@ io.on("connection", (socket) => {
     socket.roomId = roomId;
 
     console.log(`${username} (${socket.id}) created room ${roomId}`);
+
+    if (terminals.has(socket.id)) {
+      terminals.get(socket.id).kill();
+      terminals.delete(socket.id);
+    }
+    createTerminal(socket, roomId);
 
     if (!roomsCode.has(roomId)) {
       roomsCode.set(roomId, INITIAL_WORKSPACE);
@@ -131,6 +154,12 @@ io.on("connection", (socket) => {
 
     console.log(`${username} (${socket.id}) joined room ${roomId}`);
 
+    if (terminals.has(socket.id)) {
+      terminals.get(socket.id).kill();
+      terminals.delete(socket.id);
+    }
+    createTerminal(socket, roomId);
+
     if (!roomsCode.has(roomId)) {
       roomsCode.set(roomId, INITIAL_WORKSPACE);
     }
@@ -152,13 +181,15 @@ io.on("connection", (socket) => {
   // Real-Time Code Synchronization
   socket.on("code-change", ({ roomId, code }) => {
     roomsCode.set(roomId, code);
-    syncFilesToDisk(code);
+    syncFilesToDisk(roomId, code);
     socket.to(roomId).emit("receive-code", code);
   });
 
   // Sync workspace to disk only (no broadcast) — used on reconnect after server restart
   socket.on("sync-workspace", ({ code }) => {
-    syncFilesToDisk(code);
+    if (socket.roomId) {
+      syncFilesToDisk(socket.roomId, code);
+    }
   });
 
   // Real-Time Presence (Active File)
@@ -194,6 +225,14 @@ io.on("connection", (socket) => {
 
         if (usersList.length === 0) {
           roomsCode.delete(roomId);
+          try {
+            const workspaceRoot = path.join(os.tmpdir(), "codefusion-workspaces", roomId);
+            if (fs.existsSync(workspaceRoot)) {
+              fs.rmSync(workspaceRoot, { recursive: true, force: true });
+            }
+          } catch (err) {
+            console.error("Cleanup error:", err);
+          }
         }
       }
     }
@@ -213,8 +252,13 @@ io.on("connection", (socket) => {
       };
       const ext = EXT_MAP[language] || "txt";
       const fileName = `.temp_run.${ext}`;
-      const projectRoot = path.resolve(process.cwd(), "..");
-      const workspacePath = path.join(projectRoot, "workspace");
+      
+      if (!socket.roomId) throw new Error("No room joined");
+      
+      const workspacePath = path.join(os.tmpdir(), "codefusion-workspaces", socket.roomId);
+      if (!fs.existsSync(workspacePath)) {
+        fs.mkdirSync(workspacePath, { recursive: true });
+      }
       const filePath = path.join(workspacePath, fileName);
       
       fs.writeFileSync(filePath, code);

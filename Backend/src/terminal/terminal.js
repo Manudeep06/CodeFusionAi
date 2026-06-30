@@ -1,18 +1,17 @@
 import pty from "node-pty";
 import path from "path";
 import fs from "fs";
+import os from "os";
 
 export const terminals = new Map();
 
-export const createTerminal = (socket) => {
+export const createTerminal = (socket, roomId) => {
   const shell =
     process.platform === "win32"
       ? "powershell.exe"
       : "bash";
 
-  // Move one level up from Backend folder
-  const projectRoot = path.resolve(process.cwd(), "..");
-  const workspacePath = path.join(projectRoot, "workspace");
+  const workspacePath = path.join(os.tmpdir(), "codefusion-workspaces", roomId);
   
   if (!fs.existsSync(workspacePath)) {
     fs.mkdirSync(workspacePath, { recursive: true });

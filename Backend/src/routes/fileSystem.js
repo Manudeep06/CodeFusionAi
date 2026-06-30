@@ -1,20 +1,22 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
+import os from "os";
 
 const router = express.Router();
 
-const WORKSPACE = path.join(
-  path.resolve(process.cwd(), ".."),
-  "workspace"
-);
-
 router.post("/folder", (req, res) => {
-  const { folderName } = req.body;
+  const { folderName, roomId } = req.body;
+
+  if (!roomId) {
+    return res.status(400).json({ success: false, message: "roomId is required" });
+  }
+
+  const workspacePath = path.join(os.tmpdir(), "codefusion-workspaces", roomId);
 
   try {
     fs.mkdirSync(
-      path.join(WORKSPACE, folderName),
+      path.join(workspacePath, folderName),
       { recursive: true }
     );
 
