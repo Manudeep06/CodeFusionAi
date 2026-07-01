@@ -4,6 +4,8 @@ import Editor from "@monaco-editor/react";
 import { socket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
 import TerminalComponent from "../components/Terminal";
+import { syncFilesToWebContainer, onServerReady } from "../services/webcontainer";
+import { loadWorkspaceFiles, saveWorkspaceFiles } from "../services/db";
 
 /* ═══════════════════════════════════════
    CONSTANTS
@@ -403,6 +405,8 @@ export default function Room() {
   const username    = user?.displayName || user?.email?.split("@")[0] || "Developer";
   const photoURL    = user?.photoURL || "";
 
+
+
   /* ── State ── */
   const [files,           setFiles]           = useState([]);
   const [code,            setCode]            = useState("");
@@ -421,7 +425,10 @@ export default function Room() {
   const aiBottomRef = useRef(null);
 
   /* ── Terminal & Sidebar resize ── */
-  const [terminalHeight, setTerminalHeight] = useState(185);
+  const [terminalHeight, setTerminalHeight] = useState(250);
+
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [rightTab, setRightTab] = useState("preview");
   const isDraggingTerm = useRef(false);
   const dragStartY = useRef(0);
   const dragStartH = useRef(0);
@@ -489,6 +496,28 @@ export default function Room() {
 
   useEffect(() => { activeFileRef.current = activeFile; }, [activeFile]);
   useEffect(() => { usersRef.current = users; }, [users]);
+
+  /* ── Load from IndexedDB ── */
+  useEffect(() => {
+    if (!roomId) return;
+    loadWorkspaceFiles(roomId).then(localFiles => {
+      if (localFiles && localFiles.length > 0) {
+        setFiles(localFiles);
+        const first = localFiles.find(f => !f.isFolder);
+        if (first) {
+          setActiveFile(first.path);
+          setCode(first.content);
+          setLanguage(first.language || getLangByExt(first.path)?.id || "javascript");
+          setOpenTabs([first.path]);
+        }
+      }
+    });
+
+    onServerReady((port, url) => {
+      setPreviewUrl(url);
+      setRightTab("preview");
+    });
+  }, [roomId]);
 
   /* ── Sync language whenever active file changes ── */
   useEffect(() => {
@@ -615,18 +644,26 @@ export default function Room() {
       );
     });
 
-    socket.on("run-code-finished", () => {
-      setIsRunning(false);
-    });
+
 
     return () => {
       socket.off("room-joined");
       socket.off("receive-code");
       socket.off("room-users");
       socket.off("cursor-update");
-      socket.off("run-code-finished");
     };
   }, [roomId]);
+
+  /* ── Sync Files to WebContainer (Debounced) ── */
+  useEffect(() => {
+    if (files.length === 0) return;
+    const timeout = setTimeout(() => {
+      syncFilesToWebContainer(files).catch((err) =>
+        console.error("Auto-sync WebContainer error:", err)
+      );
+    }, 1000);
+    return () => clearTimeout(timeout);
+  }, [files]);
 
   /* ── Helpers ── */
   const emitFiles = (upd) => socket.emit("code-change", { roomId, code: JSON.stringify(upd) });
@@ -687,7 +724,8 @@ export default function Room() {
 
     if (isFolder) {
       try {
-        await fetch("http://localhost:5000/api/filesystem/folder", {
+        const baseUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+        await fetch(`${baseUrl}/api/filesystem/folder`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -767,12 +805,28 @@ export default function Room() {
     setUploadPending(null);
   };
 
-  const runCode = () => {
+  const runCode = async () => {
     setIsRunning(true);
-    socket.emit("run-code", {
-      code,
-      language,
-    });
+    try {
+      await syncFilesToWebContainer(files);
+      let cmd = "";
+      
+      const hasPackageJson = files.some(f => f.path === "package.json");
+      
+      if (hasPackageJson) {
+        cmd = `npm install && npm run dev\r`;
+      } else if (language === "javascript") {
+        cmd = `node "${activeFile}"\r`;
+      } else {
+        cmd = `echo "Only JavaScript/Node.js is supported in WebContainers natively."\r`;
+      }
+      
+      window.dispatchEvent(new CustomEvent('run-code-command', { detail: { cmd } }));
+    } catch (err) {
+      console.error("Run code error", err);
+    } finally {
+      setTimeout(() => setIsRunning(false), 500);
+    }
   };
 
 
@@ -1547,6 +1601,31 @@ export default function Room() {
               <div className="flex-1 overflow-hidden px-4 py-2.5 min-h-0">
                 <TerminalComponent />
               </div>
+            </div>
+          </div>
+
+          {/* ━━ PREVIEW PANEL / RIGHT SIDE ━━ */}
+          <div className="w-[350px] lg:w-[450px] shrink-0 flex flex-col" style={{ background: "#0d1117", borderLeft: "1px solid #21262d" }}>
+            <div className="h-[35px] shrink-0 flex items-center px-3" style={{ borderBottom: "1px solid #21262d", background: "#161b22" }}>
+              <span className="text-[11px] font-bold text-[#e6edf3]">Live Preview</span>
+              {previewUrl && (
+                <a href={previewUrl} target="_blank" rel="noreferrer" className="ml-auto flex items-center gap-1.5 text-[#58a6ff] hover:text-[#79c0ff] transition-colors">
+                  <span className="text-[10px] font-medium truncate max-w-[150px]">{previewUrl}</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+                </a>
+              )}
+            </div>
+            <div className="flex-1 w-full h-full relative bg-white">
+              {previewUrl ? (
+                <iframe src={previewUrl} className="w-full h-full border-none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Live Preview" />
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-500 text-xs font-medium bg-[#0d1117]">
+                  <div className="flex flex-col items-center gap-3">
+                    <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                    Waiting for dev server...
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

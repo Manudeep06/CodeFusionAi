@@ -3,11 +3,13 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import { createTerminal, terminals } from "./terminal/terminal.js";
 import fs from "fs";
 import path from "path";
 import os from "os";
 import fileSystemRoute from "./routes/fileSystem.js";
+
+import mongoose from "mongoose";
+import Room from "./models/Room.js";
 
 dotenv.config();
 
@@ -16,17 +18,20 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI)
+.then(() => console.log("MongoDB connected successfully"))
+.catch(err => console.error("MongoDB connection error:", err));
+
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || "http://localhost:5173",
     methods: ["GET", "POST"],
   },
   maxHttpBufferSize: 1e9, // 1 GB limit for large workspace uploads
 });
-
-const roomsCode = new Map();
 
 const INITIAL_WORKSPACE = JSON.stringify([]);
 
@@ -118,14 +123,19 @@ io.on("connection", (socket) => {
 
     console.log(`${username} (${socket.id}) created room ${roomId}`);
 
-    if (terminals.has(socket.id)) {
-      terminals.get(socket.id).kill();
-      terminals.delete(socket.id);
-    }
-    createTerminal(socket, roomId);
-
-    if (!roomsCode.has(roomId)) {
-      roomsCode.set(roomId, INITIAL_WORKSPACE);
+    try {
+      const existing = await Room.findOne({ roomId });
+      if (!existing) {
+        await Room.create({
+          roomId,
+          name: roomName || 'Untitled Project',
+          ownerId: data.ownerId || '',
+          template: data.template || 'react',
+          files: INITIAL_WORKSPACE
+        });
+      }
+    } catch (err) {
+      console.error("MongoDB create room error:", err);
     }
 
     await broadcastRoomUsers(roomId);
@@ -154,14 +164,18 @@ io.on("connection", (socket) => {
 
     console.log(`${username} (${socket.id}) joined room ${roomId}`);
 
-    if (terminals.has(socket.id)) {
-      terminals.get(socket.id).kill();
-      terminals.delete(socket.id);
-    }
-    createTerminal(socket, roomId);
-
-    if (!roomsCode.has(roomId)) {
-      roomsCode.set(roomId, INITIAL_WORKSPACE);
+    try {
+      let room = await Room.findOne({ roomId });
+      if (!room) {
+        room = await Room.create({
+          roomId,
+          files: INITIAL_WORKSPACE
+        });
+      }
+      socket.emit("receive-code", room.files);
+    } catch (err) {
+      console.error("MongoDB join room error:", err);
+      socket.emit("receive-code", INITIAL_WORKSPACE);
     }
 
     await broadcastRoomUsers(roomId);
@@ -172,22 +186,28 @@ io.on("connection", (socket) => {
       photoURL,
     });
 
-    // Send current code to the joining user
-    socket.emit("receive-code", roomsCode.get(roomId));
-
     socket.emit("room-joined", roomId);
   });
 
   // Real-Time Code Synchronization
-  socket.on("code-change", ({ roomId, code }) => {
-    roomsCode.set(roomId, code);
+  socket.on("code-change", async ({ roomId, code }) => {
+    try {
+      await Room.updateOne({ roomId }, { files: code, lastActive: Date.now() });
+    } catch (err) {
+      console.error("MongoDB code change error:", err);
+    }
     syncFilesToDisk(roomId, code);
     socket.to(roomId).emit("receive-code", code);
   });
 
   // Sync workspace to disk only (no broadcast) — used on reconnect after server restart
-  socket.on("sync-workspace", ({ code }) => {
+  socket.on("sync-workspace", async ({ code }) => {
     if (socket.roomId) {
+      try {
+        await Room.updateOne({ roomId: socket.roomId }, { files: code, lastActive: Date.now() });
+      } catch (err) {
+        console.error("MongoDB sync workspace error:", err);
+      }
       syncFilesToDisk(socket.roomId, code);
     }
   });
@@ -224,7 +244,6 @@ io.on("connection", (socket) => {
         io.to(roomId).emit("room-users", usersList);
 
         if (usersList.length === 0) {
-          roomsCode.delete(roomId);
           try {
             const workspaceRoot = path.join(os.tmpdir(), "codefusion-workspaces", roomId);
             if (fs.existsSync(workspaceRoot)) {
@@ -235,69 +254,6 @@ io.on("connection", (socket) => {
           }
         }
       }
-    }
-  });
-
-  // Real-Time Code Execution inside interactive terminal
-  socket.on("run-code", ({ code, language }) => {
-    try {
-      const EXT_MAP = {
-        javascript: "js",
-        python: "py",
-        java: "java",
-        cpp: "cpp",
-        html: "html",
-        css: "css",
-        json: "json"
-      };
-      const ext = EXT_MAP[language] || "txt";
-      const fileName = `.temp_run.${ext}`;
-      
-      if (!socket.roomId) throw new Error("No room joined");
-      
-      const workspacePath = path.join(os.tmpdir(), "codefusion-workspaces", socket.roomId);
-      if (!fs.existsSync(workspacePath)) {
-        fs.mkdirSync(workspacePath, { recursive: true });
-      }
-      const filePath = path.join(workspacePath, fileName);
-      
-      fs.writeFileSync(filePath, code);
-      
-      const term = terminals.get(socket.id);
-      if (term) {
-        socket.emit("terminal:data", `\r\n\x1b[33m▶ Running ${language} code in local terminal...\x1b[0m\r\n`);
-        const isWin = process.platform === "win32";
-        let cmd = "";
-        
-        switch (language) {
-          case "javascript":
-            cmd = `node "${filePath}"`;
-            break;
-          case "python":
-            cmd = `python "${filePath}"`;
-            break;
-          case "java":
-            cmd = isWin ? `javac "${filePath}" ; if ($?) { java -cp "${workspacePath}" temp_run }` : `javac "${filePath}" && java -cp "${workspacePath}" temp_run`;
-            break;
-          case "cpp":
-            cmd = isWin ? `g++ "${filePath}" -o "${path.join(workspacePath, 'temp_run.exe')}" ; if ($?) { & "${path.join(workspacePath, 'temp_run.exe')}" }` : `g++ "${filePath}" -o "${path.join(workspacePath, 'temp_run')}" && "${path.join(workspacePath, 'temp_run')}"`;
-            break;
-          case "html":
-          case "css":
-          case "json":
-            cmd = isWin ? `echo '${language.toUpperCase()} file saved to ${filePath}.'` : `echo "${language.toUpperCase()} file saved to ${filePath}."`;
-            break;
-          default:
-            cmd = isWin ? `echo 'Execution not supported for language: ${language}'` : `echo "Execution not supported for language: ${language}"`;
-        }
-        
-        term.write(`${cmd}\r`);
-      }
-    } catch (error) {
-      console.error("Code execution error:", error);
-      socket.emit("terminal:data", `\r\n\x1b[31m❌ Execution Error: ${error.message}\x1b[0m\r\n`);
-    } finally {
-      setTimeout(() => socket.emit("run-code-finished"), 500);
     }
   });
 

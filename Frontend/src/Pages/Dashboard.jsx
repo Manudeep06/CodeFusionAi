@@ -281,9 +281,11 @@ function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [roomId, setRoomId]       = useState("");
+  const [roomName, setRoomName]   = useState("");
   const [joinId, setJoinId]       = useState("");
   const [copied, setCopied]       = useState(false);
   const [isJoining, setIsJoining] = useState(false);
+  const [template, setTemplate] = useState("react");
 
  useEffect(() => {
    socket.connect();
@@ -330,7 +332,8 @@ function Dashboard() {
     catch (e) { console.error(e); }
   };
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
+    if (!roomName.trim()) return;
     const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
 
     const seg = (n) =>
@@ -343,7 +346,20 @@ function Dashboard() {
 
     setRoomId(newRoomId);
 
-    socket.emit("create-room", newRoomId);
+    // Save project files to IndexedDB based on template
+    const { getTemplateFiles } = await import("../services/templates");
+    const { saveWorkspaceFiles } = await import("../services/db");
+    const templateFiles = getTemplateFiles(template);
+    await saveWorkspaceFiles(newRoomId, templateFiles);
+
+    socket.emit("create-room", { 
+      roomId: newRoomId, 
+      roomName: roomName.trim(),
+      ownerId: user?.uid || "",
+      username: user?.displayName || user?.email?.split("@")[0] || "Developer",
+      photoURL: user?.photoURL || "",
+      template: template
+    });
 
     navigate(`/room/${newRoomId}`);
   };
@@ -487,7 +503,13 @@ function Dashboard() {
             {/* CTA buttons */}
             <div className="flex flex-wrap gap-3 mb-8">
               <button
-                onClick={handleCreateRoom}
+                onClick={() => {
+                  const input = document.getElementById('roomNameInput');
+                  if (input) {
+                    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setTimeout(() => input.focus(), 300);
+                  }
+                }}
                 className="group relative overflow-hidden flex items-center gap-2.5 bg-gradient-to-r from-purple-600 via-violet-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-3 px-6 rounded-xl shadow-[0_0_30px_rgba(168,85,247,0.40)] hover:shadow-[0_0_50px_rgba(168,85,247,0.65)] active:scale-[0.97] transition-all duration-300 cursor-pointer text-sm"
               >
                 <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 bg-gradient-to-r from-transparent via-white/25 to-transparent skew-x-[-20deg]" />
@@ -525,11 +547,7 @@ function Dashboard() {
               <div className="relative">
                 <CodePreview />
               </div>
-              {/* LIVE badge */}
-              <div className="absolute -top-3 -right-3 flex items-center gap-1.5 bg-emerald-500 text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full shadow-lg shadow-emerald-500/40">
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                LIVE
-              </div>
+              
               {/* AI chip */}
               <div className="absolute -bottom-4 -left-4 flex items-center gap-2.5 border border-white/[0.12] rounded-xl px-3.5 py-2.5 shadow-2xl backdrop-blur-xl" style={{ background: "rgba(13,17,23,0.9)" }}>
                 <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-purple-600 to-blue-500 flex items-center justify-center text-[9px] font-black text-white shrink-0 shadow-lg shadow-purple-500/30">
@@ -575,16 +593,42 @@ function Dashboard() {
               </div>
 
               {!roomId ? (
-                <button
-                  onClick={handleCreateRoom}
-                  className="group relative overflow-hidden w-full sm:w-auto flex items-center justify-center gap-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-3 px-7 rounded-xl shadow-[0_0_24px_rgba(168,85,247,0.35)] hover:shadow-[0_0_40px_rgba(168,85,247,0.55)] active:scale-[0.97] transition-all duration-300 cursor-pointer text-sm"
-                >
-                  <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg]" />
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                  Generate New Room
-                </button>
+                <div className="space-y-4">
+                  <div className="relative space-y-3">
+                    <input
+                      id="roomNameInput"
+                      type="text"
+                      placeholder="Enter Project Name"
+                      value={roomName}
+                      onChange={(e) => setRoomName(e.target.value)}
+                      className="w-full bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-3.5 text-slate-200 placeholder-slate-700 font-medium focus:outline-none focus:border-purple-500/60 focus:bg-purple-950/10 focus:ring-2 focus:ring-purple-500/15 transition duration-200"
+                    />
+                    <select
+                      id="templateSelect"
+                      value={template}
+                      onChange={(e) => setTemplate(e.target.value)}
+                      className="w-full bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-3.5 text-slate-200 font-medium focus:outline-none focus:border-purple-500/60 focus:bg-purple-950/10 focus:ring-2 focus:ring-purple-500/15 transition duration-200"
+                    >
+                      <option value="react" className="bg-slate-900">React + Vite</option>
+                      <option value="vanilla" className="bg-slate-900">HTML / CSS / JS</option>
+                      <option value="node" className="bg-slate-900">Node.js Express</option>
+                    </select>
+                    <p className="mt-2 text-[10px] text-slate-500">
+                      Files will be saved in your browser's IndexedDB.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCreateRoom}
+                    disabled={!roomName.trim()}
+                    className="group relative overflow-hidden w-full sm:w-auto flex items-center justify-center gap-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold py-3 px-7 rounded-xl shadow-[0_0_24px_rgba(168,85,247,0.35)] hover:shadow-[0_0_40px_rgba(168,85,247,0.55)] active:scale-[0.97] transition-all duration-300 cursor-pointer text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg]" />
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Generate New Room
+                  </button>
+                </div>
               ) : (
                 <div className="space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-purple-950/25 border border-purple-500/20 rounded-xl p-4">
