@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { signInWithGoogle, loginUser, registerUser } from "../firebase/firebase";
+import { signInWithGoogle, signInWithGoogleRedirect, loginUser, registerUser } from "../firebase/firebase";
 import { useAuth } from "../context/AuthContext";
 
 /* ─── Animated Particle Canvas ──────────────────────────────────────────── */
@@ -189,10 +189,16 @@ function Login() {
       }
     } catch (err) {
       console.error("Google Sign-In error:", err);
-      if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
+      if (err.code === "auth/popup-blocked") {
+        setOkMsg("Popup blocked. Redirecting to Google Sign-In instead...");
+        try {
+          await signInWithGoogleRedirect();
+        } catch (redirErr) {
+          console.error("Google Redirect error:", redirErr);
+          setErrMsg("Google login failed. Please allow popups or try again.");
+        }
+      } else if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
         setErrMsg("Sign-in was cancelled. Please try again.");
-      } else if (err.code === "auth/popup-blocked") {
-        setErrMsg("Popup was blocked by browser. Please allow popups and try again.");
       } else if (err.code === "auth/network-request-failed") {
         setErrMsg("Network error. Please check your connection and try again.");
       } else if (err.code === "auth/unauthorized-domain") {

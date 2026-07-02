@@ -7,6 +7,8 @@ import {
   browserPopupRedirectResolver,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -50,9 +52,14 @@ export const signInWithGoogle = async () => {
   return result; // Returns UserCredential immediately on success
 };
 
+// Google Sign In Redirect fallback
+export const signInWithGoogleRedirect = async () => {
+  return await signInWithRedirect(auth, provider);
+};
+
 // No-op kept for backwards compat — popup flow doesn't need a redirect handler
 export const handleGoogleRedirect = async () => {
-  return null;
+  return await getRedirectResult(auth);
 };
 
 // Logout
