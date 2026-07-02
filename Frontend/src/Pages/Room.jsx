@@ -1,6 +1,9 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import Editor from "@monaco-editor/react";
+import Editor, { loader } from "@monaco-editor/react";
+import * as monaco from "monaco-editor";
+
+loader.config({ monaco });
 import { socket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
 import TerminalComponent from "../components/Terminal";
@@ -438,6 +441,12 @@ export default function Room() {
   const dragStartX = useRef(0);
   const dragStartW = useRef(0);
 
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewWidth, setPreviewWidth] = useState(400);
+  const isDraggingPreview = useRef(false);
+  const dragStartPreviewX = useRef(0);
+  const dragStartPreviewW = useRef(0);
+
   const onDividerMouseDown = (e) => {
     isDraggingTerm.current = true;
     dragStartY.current = e.clientY;
@@ -454,6 +463,17 @@ export default function Room() {
     document.body.style.userSelect = "none";
   };
 
+  const [isDraggingPreviewState, setIsDraggingPreviewState] = useState(false);
+
+  const onPreviewDividerMouseDown = (e) => {
+    isDraggingPreview.current = true;
+    setIsDraggingPreviewState(true);
+    dragStartPreviewX.current = e.clientX;
+    dragStartPreviewW.current = previewWidth;
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+  };
+
   useEffect(() => {
     const onMove = (e) => {
       if (isDraggingTerm.current) {
@@ -464,12 +484,18 @@ export default function Room() {
         const delta = e.clientX - dragStartX.current;
         const newW = Math.max(160, Math.min(480, dragStartW.current + delta));
         setSidebarWidth(newW);
+      } else if (isDraggingPreview.current) {
+        const delta = dragStartPreviewX.current - e.clientX;
+        const newW = Math.max(200, Math.min(800, dragStartPreviewW.current + delta));
+        setPreviewWidth(newW);
       }
     };
     const onUp = () => {
-      if (isDraggingTerm.current || isDraggingSidebar.current) {
+      if (isDraggingTerm.current || isDraggingSidebar.current || isDraggingPreview.current) {
+        if (isDraggingPreview.current) setIsDraggingPreviewState(false);
         isDraggingTerm.current = false;
         isDraggingSidebar.current = false;
+        isDraggingPreview.current = false;
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       }
@@ -515,6 +541,7 @@ export default function Room() {
 
     onServerReady((port, url) => {
       setPreviewUrl(url);
+      setIsPreviewOpen(true);
       setRightTab("preview");
     });
   }, [roomId]);
@@ -811,10 +838,16 @@ export default function Room() {
       await syncFilesToWebContainer(files);
       let cmd = "";
       
-      const hasPackageJson = files.some(f => f.path === "package.json");
+      const pkgFile = files.find(f => f.path.endsWith("package.json"));
       
-      if (hasPackageJson) {
-        cmd = `npm install && npm run dev\r`;
+      if (pkgFile) {
+        const parts = pkgFile.path.split("/");
+        if (parts.length > 1) {
+          const dir = parts.slice(0, -1).join("/");
+          cmd = `cd "${dir}" && npm install && npm run dev\r`;
+        } else {
+          cmd = `npm install && npm run dev\r`;
+        }
       } else if (language === "javascript") {
         cmd = `node "${activeFile}"\r`;
       } else {
@@ -1500,6 +1533,21 @@ export default function Room() {
                       </>
                     )}
                   </button>
+
+                  <button
+                    onClick={() => setIsPreviewOpen(!isPreviewOpen)}
+                    className="flex items-center gap-1.5 h-[28px] px-3.5 text-[11px] font-bold rounded-full transition-all tracking-wide"
+                    style={{
+                      background: isPreviewOpen ? "#30363d" : "#21262d",
+                      color: "#c9d1d9",
+                      border: "1px solid #30363d"
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "#30363d"; }}
+                    onMouseLeave={(e) => { if (!isPreviewOpen) e.currentTarget.style.background = "#21262d"; }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
+                    Preview
+                  </button>
                 </div>
 
                 {/* ── TAB BAR ── */}
@@ -1598,36 +1646,57 @@ export default function Room() {
 
 
               {/* Output */}
-              <div className="flex-1 overflow-hidden px-4 py-2.5 min-h-0">
+              <div className="flex-1 overflow-hidden min-h-0">
                 <TerminalComponent />
               </div>
             </div>
           </div>
 
           {/* ━━ PREVIEW PANEL / RIGHT SIDE ━━ */}
-          <div className="w-[350px] lg:w-[450px] shrink-0 flex flex-col" style={{ background: "#0d1117", borderLeft: "1px solid #21262d" }}>
-            <div className="h-[35px] shrink-0 flex items-center px-3" style={{ borderBottom: "1px solid #21262d", background: "#161b22" }}>
-              <span className="text-[11px] font-bold text-[#e6edf3]">Live Preview</span>
-              {previewUrl && (
-                <a href={previewUrl} target="_blank" rel="noreferrer" className="ml-auto flex items-center gap-1.5 text-[#58a6ff] hover:text-[#79c0ff] transition-colors">
-                  <span className="text-[10px] font-medium truncate max-w-[150px]">{previewUrl}</span>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
-                </a>
-              )}
-            </div>
-            <div className="flex-1 w-full h-full relative bg-white">
-              {previewUrl ? (
-                <iframe src={previewUrl} className="w-full h-full border-none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Live Preview" />
-              ) : (
-                <div className="flex items-center justify-center h-full text-slate-500 text-xs font-medium bg-[#0d1117]">
-                  <div className="flex flex-col items-center gap-3">
-                    <svg className="w-6 h-6 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                    Waiting for dev server...
+          {isPreviewOpen && (
+            <>
+              {/* Divider for resizing preview */}
+              <div
+                onMouseDown={onPreviewDividerMouseDown}
+                className="flex items-center justify-center z-10"
+                style={{
+                  width: "5px",
+                  background: "#21262d",
+                  cursor: "ew-resize",
+                  position: "relative",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = "#58a6ff"}
+                onMouseLeave={(e) => e.currentTarget.style.background = "#21262d"}
+                title="Drag to resize preview panel"
+              >
+                <div style={{ width: "2px", height: "40px", borderRadius: "1px", background: "inherit", opacity: 0.4 }} />
+              </div>
+
+              <div className="shrink-0 flex flex-col" style={{ width: `${previewWidth}px`, background: "#0d1117" }}>
+                <div className="h-[35px] shrink-0 flex items-center px-3 gap-3" style={{ borderBottom: "1px solid #21262d", background: "#161b22" }}>
+                  <span className="text-[11px] font-bold text-[#e6edf3]">Live Preview</span>
+                  
+                  <div className="ml-auto flex items-center gap-2">
+                    <button onClick={() => setIsPreviewOpen(false)} title="Close preview" className="flex items-center text-[#8b949e] hover:text-[#f85149] transition-colors p-1.5 bg-[#21262d] rounded hover:bg-[#30363d]">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
+                <div className="flex-1 w-full h-full relative bg-white" style={{ pointerEvents: isDraggingPreviewState ? 'none' : 'auto' }}>
+                  {previewUrl ? (
+                    <iframe src={previewUrl} className="w-full h-full border-none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Live Preview" />
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-slate-500 text-xs font-medium bg-[#0d1117]">
+                      <div className="flex flex-col items-center gap-3">
+                        <svg className="w-6 h-6 text-slate-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        Waiting for dev server...
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* ══ STATUS BAR ══ */}

@@ -4,6 +4,29 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { socket } from "../services/socket";
 
+/* ─── Profile Image Component with COEP/CORS & Error Fallback ─────────────── */
+function ProfileImage({ src, fallback, alt, className }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  if (src && !imgFailed) {
+    return (
+      <img
+        src={src}
+        alt={alt || ""}
+        crossOrigin="anonymous"
+        onError={() => setImgFailed(true)}
+        className={className}
+      />
+    );
+  }
+
+  return (
+    <div className={`bg-gradient-to-tr from-purple-600 via-violet-600 to-blue-500 flex items-center justify-center font-black text-white select-none ${className}`}>
+      {fallback}
+    </div>
+  );
+}
+
 /* ─── Interactive Parallax Background ─────────────────────────────────────── */
 function InteractiveBg() {
   const spotRef = useRef(null);
@@ -219,7 +242,7 @@ function CodePreview() {
     { tokens: [{ t: "  model", c: "text-violet-300" }, { t: ": ", c: "text-slate-500" }, { t: "'gemini-2.0-flash'", c: "text-emerald-400" }, { t: ",", c: "text-slate-500" }] },
     { tokens: [{ t: "  collab", c: "text-violet-300" }, { t: ": ", c: "text-slate-500" }, { t: "true", c: "text-orange-400" }, { t: ",", c: "text-slate-500" }] },
     { tokens: [{ t: "  sync", c: "text-violet-300" }, { t: ": ", c: "text-slate-500" }, { t: "'crdt'", c: "text-emerald-400" }, { t: ",", c: "text-slate-500" }] },
-    { tokens: [{ t: "  sandbox", c: "text-violet-300" }, { t: ": ", c: "text-slate-500" }, { t: "'judge0'", c: "text-emerald-400" }] },
+    { tokens: [{ t: "  sandbox", c: "text-violet-300" }, { t: ": ", c: "text-slate-500" }, { t: "'webcontainer'", c: "text-emerald-400" }] },
     { tokens: [{ t: "})", c: "text-slate-400" }] },
     { tokens: [] },
     { tokens: [{ t: "await", c: "text-pink-400 font-semibold" }, { t: " room", c: "text-sky-300" }, { t: ".", c: "text-slate-500" }, { t: "invite", c: "text-blue-300" }, { t: "(collaborators)", c: "text-slate-400" }] },
@@ -328,7 +351,7 @@ function Dashboard() {
  }, []);
 
   const handleLogout = async () => {
-    try { await logout(); navigate("/"); }
+    try { await logout(); window.location.href = "/"; }
     catch (e) { console.error(e); }
   };
 
@@ -349,7 +372,15 @@ function Dashboard() {
     // Save project files to IndexedDB based on template
     const { getTemplateFiles } = await import("../services/templates");
     const { saveWorkspaceFiles } = await import("../services/db");
-    const templateFiles = getTemplateFiles(template);
+    const rootFolder = roomName.trim().replace(/[^a-zA-Z0-9_-]/g, "_") || "Project";
+    const templateFilesRaw = getTemplateFiles(template);
+    
+    const templateFiles = templateFilesRaw.map(f => ({
+      ...f,
+      path: `${rootFolder}/${f.path}`
+    }));
+    templateFiles.push({ path: rootFolder, isFolder: true, content: undefined });
+
     await saveWorkspaceFiles(newRoomId, templateFiles);
 
     socket.emit("create-room", { 
@@ -358,7 +389,8 @@ function Dashboard() {
       ownerId: user?.uid || "",
       username: user?.displayName || user?.email?.split("@")[0] || "Developer",
       photoURL: user?.photoURL || "",
-      template: template
+      template: template,
+      files: JSON.stringify(templateFiles)
     });
 
     navigate(`/room/${newRoomId}`);
@@ -428,13 +460,12 @@ function Dashboard() {
           <div className="flex items-center gap-3">
             {/* User pill */}
             <div className="hidden sm:flex items-center gap-2 bg-white/[0.04] border border-white/[0.07] rounded-full pl-2.5 pr-4 py-1.5">
-              {user?.photoURL ? (
-                <img src={user.photoURL} alt="" className="w-5 h-5 rounded-full object-cover" />
-              ) : (
-                <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-purple-500 to-blue-500 flex items-center justify-center text-[8px] font-black text-white">
-                  {getInitials()}
-                </div>
-              )}
+              <ProfileImage
+                src={user?.photoURL}
+                fallback={getInitials()}
+                alt="Profile"
+                className="w-5 h-5 rounded-full object-cover text-[8px]"
+              />
               <span className="relative flex h-1.5 w-1.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
@@ -490,7 +521,7 @@ function Dashboard() {
               {[
                 { label: "WebSocket Sync",   color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
                 { label: "Gemini AI",         color: "text-purple-400",  bg: "bg-purple-500/10",  border: "border-purple-500/20" },
-                { label: "Judge0 Sandbox",   color: "text-cyan-400",    bg: "bg-cyan-500/10",    border: "border-cyan-500/20" },
+                { label: "WebContainer Sandbox", color: "text-cyan-400",    bg: "bg-cyan-500/10",    border: "border-cyan-500/20" },
                 { label: "End-to-End Encrypted", color: "text-blue-400", bg: "bg-blue-500/10",   border: "border-blue-500/20" },
               ].map(t => (
                 <span key={t.label} className={`inline-flex items-center gap-1.5 ${t.bg} ${t.border} border ${t.color} text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg`}>
@@ -567,7 +598,7 @@ function Dashboard() {
           <StatCard label="Sync Latency"  value="~12ms"                       sub="Websockets Active"  icon="⚡"   colorClass="text-emerald-400" glowHex="#10b981" barWidth="85%" delay={0}   />
           <StatCard label="Active Rooms"  value={roomId ? "1 / 5" : "0 / 5"} sub="Developer Capacity" icon="◈"   colorClass="text-violet-400"  glowHex="#8b5cf6" barWidth={roomId ? "20%" : "5%"} delay={80}  />
           <StatCard label="AI Copilot"    value="Ready"                       sub="Gemini-2.0-Flash"   icon="✦"   colorClass="text-fuchsia-400" glowHex="#ec4899" barWidth="100%" delay={160} />
-          <StatCard label="Compilers"     value="4 Engines"                   sub="Judge0 Sandbox"     icon="</>" colorClass="text-cyan-400"    glowHex="#06b6d4" barWidth="75%" delay={240} />
+          <StatCard label="Compilers"     value="WASM Node.js"               sub="WebContainer Sandbox" icon="</>" colorClass="text-cyan-400"    glowHex="#06b6d4" barWidth="75%" delay={240} />
         </div>
 
         {/* ── Main Grid ────────────────────────────────────────────────────── */}
@@ -603,17 +634,41 @@ function Dashboard() {
                       onChange={(e) => setRoomName(e.target.value)}
                       className="w-full bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-3.5 text-slate-200 placeholder-slate-700 font-medium focus:outline-none focus:border-purple-500/60 focus:bg-purple-950/10 focus:ring-2 focus:ring-purple-500/15 transition duration-200"
                     />
-                    <select
-                      id="templateSelect"
-                      value={template}
-                      onChange={(e) => setTemplate(e.target.value)}
-                      className="w-full bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-3.5 text-slate-200 font-medium focus:outline-none focus:border-purple-500/60 focus:bg-purple-950/10 focus:ring-2 focus:ring-purple-500/15 transition duration-200"
-                    >
-                      <option value="react" className="bg-slate-900">React + Vite</option>
-                      <option value="vanilla" className="bg-slate-900">HTML / CSS / JS</option>
-                      <option value="node" className="bg-slate-900">Node.js Express</option>
-                    </select>
-                    <p className="mt-2 text-[10px] text-slate-500">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2">
+                      {[
+                        { id: "react", name: "React", desc: "Vite App", color: "#61dafb", icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M11.955 17.262c-3.133 0-5.918-.544-7.854-1.528-.868-.44-1.574-.95-2.072-1.498-.5-.55-.747-1.127-.747-1.706 0-.58.247-1.156.747-1.706.498-.549 1.204-1.059 2.072-1.498 1.936-.984 4.72-1.528 7.854-1.528 3.133 0 5.918.544 7.854 1.528.868.44 1.574.95 2.072 1.498.5.55.747 1.127.747 1.706 0 .58-.247 1.156-.747 1.706-.498.549-1.204 1.059-2.072 1.498-1.936.984-4.72 1.528-7.854 1.528zM11.955 8.8c-2.923 0-5.503.498-7.258 1.39-.784.398-1.4.846-1.815 1.302.395.426.967.842 1.696 1.213C6.35 13.61 8.98 14.118 11.955 14.118c2.975 0 5.604-.508 7.377-1.413.729-.371 1.301-.787 1.696-1.213-.415-.456-1.031-.904-1.815-1.302-1.755-.892-4.335-1.39-7.258-1.39z"/><circle cx="11.955" cy="12.53" r="2.25"/></svg> },
+                        { id: "vue", name: "Vue", desc: "Vite App", color: "#42b883", icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M14.222 3.667h5.111L12 16.333 4.667 3.667h5.111l2.222 3.889 2.222-3.889zM12 20.333L1.333 3.667h3.778L12 14.556l6.889-10.889h3.778L12 20.333z"/></svg> },
+                        { id: "svelte", name: "Svelte", desc: "Vite App", color: "#ff3e00", icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M17.067 2.25C15.343 2.25 13.7 2.915 12.5 4.1l-6.4 6.3c-1.4 1.4-1.4 3.6 0 5l1.6 1.6c1.4 1.4 3.6 1.4 5 0l1.7-1.7c.3-.3.8-.3 1.1 0 .3.3.3.8 0 1.1l-1.7 1.7c-2 2-5.3 2-7.3 0l-1.6-1.6c-2-2-2-5.3 0-7.3l6.4-6.3c1.6-1.6 3.7-2.4 6-2.4 2.2 0 4.4.8 6 2.4 3.3 3.3 3.3 8.7 0 12l-.9.9c-.3.3-.8.3-1.1 0-.3-.3-.3-.8 0-1.1l.9-.9c2.7-2.7 2.7-7.1 0-9.8-1.4-1.4-3.2-2.1-5.2-2.1z"/><path d="M6.933 21.75c1.724 0 3.364-.665 4.567-1.85l6.4-6.3c1.4-1.4 1.4-3.6 0-5l-1.6-1.6c-1.4-1.4-3.6-1.4-5 0l-1.7 1.7c-.3.3-.8.3-1.1 0-.3-.3-.3-.8 0-1.1l1.7-1.7c2-2 5.3-2 7.3 0l1.6 1.6c2 2 2 5.3 0 7.3l-6.4 6.3c-1.6 1.6-3.7 2.4-6 2.4-2.2 0-4.4-.8-6-2.4-3.3-3.3-3.3-8.7 0-12l.9-.9c.3-.3.8-.3 1.1 0 .3.3.3.8 0 1.1l-.9.9c-2.7 2.7-2.7 7.1 0 9.8 1.4 1.4 3.2 2.1 5.2 2.1z"/></svg> },
+                        { id: "node", name: "Node.js", desc: "Express", color: "#339933", icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 2L2 7.7v8.6l10 5.7 10-5.7V7.7L12 2zm8 13.1l-8 4.6-8-4.6V8.9l8-4.6 8 4.6v6.2z"/><path d="M12 6.6L5.7 10v4l6.3 3.6 6.3-3.6v-4L12 6.6zm4.5 6.6L12 15.8l-4.5-2.6v-2.4l4.5-2.6 4.5 2.6v2.4z"/></svg> },
+                        { id: "vanilla", name: "Vanilla", desc: "HTML / JS", color: "#f7df1e", icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M2.5 2L4 21.5l8 2.5 8-2.5L21.5 2h-19zm15 4l-.5 4.5h-9l.5 3h8.5l-.5 4.5-4 1.5-4-1.5-.5-3.5h3l.5 1 2 .5 2-.5.5-1.5h-8.5l-1-9h11.5z"/></svg> }
+                      ].map(t => (
+                        <div
+                          key={t.id}
+                          onClick={() => setTemplate(t.id)}
+                          className={`relative p-3 rounded-xl border cursor-pointer transition-all duration-300 flex flex-col items-center justify-center gap-2 text-center group ${
+                            template === t.id 
+                              ? "border-purple-500/60 bg-purple-500/10 shadow-[0_0_20px_rgba(168,85,247,0.15)] scale-[1.02]" 
+                              : "border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/[0.15]"
+                          }`}
+                        >
+                          {template === t.id && (
+                            <div className="absolute top-1.5 right-1.5">
+                              <svg className="w-3.5 h-3.5 text-purple-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            </div>
+                          )}
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center shadow-lg transition-transform duration-300 group-hover:scale-110" style={{ background: `${t.color}20`, color: t.color }}>
+                            {t.icon}
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-bold text-slate-200">{t.name}</div>
+                            <div className="text-[9px] text-slate-500 font-medium">{t.desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-4 text-[10px] text-slate-500">
                       Files will be saved in your browser's IndexedDB.
                     </p>
                   </div>
@@ -728,17 +783,12 @@ function Dashboard() {
                 />
                 <div className="relative flex items-center gap-4">
                   <div className="relative shrink-0">
-                    {user?.photoURL ? (
-                      <img
-                        src={user.photoURL}
-                        alt={user.displayName || "Avatar"}
-                        className="w-16 h-16 rounded-2xl object-cover ring-2 ring-purple-500/40 shadow-2xl"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600 via-violet-600 to-blue-500 flex items-center justify-center font-black text-white text-lg shadow-2xl shadow-purple-900/50">
-                        {getInitials()}
-                      </div>
-                    )}
+                    <ProfileImage
+                      src={user?.photoURL}
+                      fallback={getInitials()}
+                      alt={user.displayName || "Avatar"}
+                      className="w-16 h-16 rounded-2xl object-cover ring-2 ring-purple-500/40 shadow-2xl text-lg"
+                    />
                     {/* Online dot */}
                     <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-[#030812] border-2 border-emerald-500 flex items-center justify-center">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -784,7 +834,7 @@ function Dashboard() {
                 <ul className="space-y-1.5">
                   {[
                     { label: "Sync Socket Server", status: "Active",  dotColor: "#10b981", bg: "rgba(16,185,129,0.06)" },
-                    { label: "Judge0 Sandboxes",   status: "Active",  dotColor: "#10b981", bg: "rgba(16,185,129,0.06)" },
+                    { label: "WebContainer Runtime", status: "Active",  dotColor: "#10b981", bg: "rgba(16,185,129,0.06)" },
                     { label: "Gemini-2.0-Flash",   status: "Ready",   dotColor: "#a855f7", bg: "rgba(168,85,247,0.06)" },
                     { label: "Firebase Auth",       status: "Online",  dotColor: "#3b82f6", bg: "rgba(59,130,246,0.06)" },
                     { label: "Database Cluster",    status: "Online",  dotColor: "#3b82f6", bg: "rgba(59,130,246,0.06)" },

@@ -1,6 +1,10 @@
 import { initializeApp } from "firebase/app";
 import {
-  getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  browserPopupRedirectResolver,
   GoogleAuthProvider,
   signInWithPopup,
   signOut,
@@ -19,26 +23,51 @@ const firebaseConfig = {
   measurementId: "G-D7Q3HQSSN9",
 };
 
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+// Initialize Authentication without loading the hidden cross-origin iframe (which is blocked by COEP)
+export const auth = initializeAuth(app, {
+  persistence: [
+    indexedDBLocalPersistence,
+    browserLocalPersistence,
+    browserSessionPersistence,
+  ],
+  popupRedirectResolver: browserPopupRedirectResolver,
+});
 
+// Google Provider
 export const provider = new GoogleAuthProvider();
+provider.setCustomParameters({
+  prompt: "select_account",
+});
+provider.addScope("email");
+provider.addScope("profile");
 
-export const signInWithGoogle = () => {
-  return signInWithPopup(auth, provider);
+// Google Sign In — uses popup (works on localhost & all domains reliably)
+export const signInWithGoogle = async () => {
+  const result = await signInWithPopup(auth, provider);
+  return result; // Returns UserCredential immediately on success
 };
 
-export const logout = () => {
-  return signOut(auth);
+// No-op kept for backwards compat — popup flow doesn't need a redirect handler
+export const handleGoogleRedirect = async () => {
+  return null;
 };
 
-export const registerUser = (email, password) => {
-  return createUserWithEmailAndPassword(auth, email, password);
+// Logout
+export const logout = async () => {
+  return await signOut(auth);
 };
 
-export const loginUser = (email, password) => {
-  return signInWithEmailAndPassword(auth, email, password);
+// Register
+export const registerUser = async (email, password) => {
+  return await createUserWithEmailAndPassword(auth, email, password);
+};
+
+// Login
+export const loginUser = async (email, password) => {
+  return await signInWithEmailAndPassword(auth, email, password);
 };
 
 export { onAuthStateChanged };

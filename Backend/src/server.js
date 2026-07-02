@@ -131,7 +131,7 @@ io.on("connection", (socket) => {
           name: roomName || 'Untitled Project',
           ownerId: data.ownerId || '',
           template: data.template || 'react',
-          files: INITIAL_WORKSPACE
+          files: data.files || INITIAL_WORKSPACE
         });
       }
     } catch (err) {

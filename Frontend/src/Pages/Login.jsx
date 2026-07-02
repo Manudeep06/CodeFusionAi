@@ -175,29 +175,87 @@ function Login() {
   const [okMsg,    setOkMsg]    = useState("");
   const navigate = useNavigate();
 
-  useEffect(() => { if (user) navigate("/dashboard"); }, [user, navigate]);
+  // Redirect to dashboard if already signed in (full reload required to load headers)
+  useEffect(() => { if (user) window.location.href = "/dashboard"; }, [user]);
 
   const google = async () => {
-    setLoading(true); setErrMsg(""); setOkMsg("");
-    try { await signInWithGoogle(); navigate("/dashboard"); }
-    catch (e) { setErrMsg(e.message || "Google auth failed."); }
-    finally { setLoading(false); }
+    setLoading(true);
+    setErrMsg("");
+    try {
+      const result = await signInWithGoogle();
+      if (result?.user) {
+        setOkMsg("Signed in successfully! Redirecting…");
+        setTimeout(() => { window.location.href = "/dashboard"; }, 500);
+      }
+    } catch (err) {
+      console.error("Google Sign-In error:", err);
+      if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
+        setErrMsg("Sign-in was cancelled. Please try again.");
+      } else if (err.code === "auth/popup-blocked") {
+        setErrMsg("Popup was blocked by browser. Please allow popups and try again.");
+      } else if (err.code === "auth/network-request-failed") {
+        setErrMsg("Network error. Please check your connection and try again.");
+      } else if (err.code === "auth/unauthorized-domain") {
+        setErrMsg("This domain is not authorized for Google Sign-In.");
+      } else {
+        setErrMsg(err.message || "Google Sign-In failed. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
-
   const submit = async (e) => {
     e.preventDefault(); setLoading(true); setErrMsg(""); setOkMsg("");
     try {
       if (isRegister) {
         await registerUser(email, password);
         setOkMsg("Account created! Redirecting…");
-        setTimeout(() => navigate("/dashboard"), 1400);
       } else {
         await loginUser(email, password);
         setOkMsg("Welcome back! Redirecting…");
-        setTimeout(() => navigate("/dashboard"), 900);
       }
-    } catch (e) { setErrMsg(e.message || "Auth error occurred."); }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.error(err);
+      if (!isRegister && (err.code === "auth/user-not-found" || err.message?.includes("user-not-found"))) {
+        setErrMsg(
+          <span>
+            Account does not exist.{" "}
+            <button
+              type="button"
+              onClick={() => setIsRegister(true)}
+              className="underline text-purple-400 font-bold hover:text-purple-300 cursor-pointer ml-1 focus:outline-none"
+            >
+              Create Account
+            </button>
+          </span>
+        );
+      } else if (isRegister && (err.code === "auth/email-already-in-use" || err.message?.includes("email-already-in-use"))) {
+        setErrMsg(
+          <span>
+            Email already registered.{" "}
+            <button
+              type="button"
+              onClick={() => setIsRegister(false)}
+              className="underline text-purple-400 font-bold hover:text-purple-300 cursor-pointer ml-1 focus:outline-none"
+            >
+              Sign In
+            </button>
+          </span>
+        );
+      } else {
+        let friendlyMsg = err.message || "Auth error occurred.";
+        if (friendlyMsg.includes("auth/invalid-credential") || friendlyMsg.includes("auth/wrong-password")) {
+          friendlyMsg = "Invalid email or password. Please try again.";
+        } else if (friendlyMsg.includes("auth/invalid-email")) {
+          friendlyMsg = "Please enter a valid email address.";
+        } else if (friendlyMsg.includes("auth/weak-password")) {
+          friendlyMsg = "Password is too weak. Must be at least 6 characters.";
+        }
+        setErrMsg(friendlyMsg);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const switchTab = (reg) => { setIsRegister(reg); setErrMsg(""); setOkMsg(""); };
@@ -236,7 +294,7 @@ function Login() {
           <div className="hidden lg:flex flex-col">
 
             {/* Badge */}
-            <div className="animate-card-enter inline-flex self-start items-center gap-2.5 rounded-full border border-purple-500/30 px-5 py-2 mb-8" style={{ opacity: 0, background: "rgba(139,92,246,0.08)" }}>
+            <div className="animate-card-enter inline-flex self-start items-center gap-2.5 rounded-full border border-purple-500/30 px-5 py-2 mb-8" style={{ background: "rgba(139,92,246,0.08)" }}>
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-80" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-purple-400" />
@@ -245,7 +303,7 @@ function Login() {
             </div>
 
             {/* Hero heading */}
-            <div className="animate-card-enter mb-6" style={{ opacity: 0, animationDelay: "60ms" }}>
+            <div className="animate-card-enter mb-6" style={{ animationDelay: "60ms" }}>
               <h1 className="font-black leading-[1.05] tracking-tight">
                 <span className="block text-[3.4rem] xl:text-[4rem] text-white">Build together.</span>
                 <span className="block text-[3.4rem] xl:text-[4rem] bg-gradient-to-r from-purple-400 via-fuchsia-300 to-blue-400 bg-clip-text text-transparent animate-gradient">Ship faster.</span>
@@ -256,7 +314,7 @@ function Login() {
             </div>
 
             {/* Stats row */}
-            <div className="animate-card-enter flex items-center gap-8 mb-10 pl-1" style={{ opacity: 0, animationDelay: "120ms" }}>
+            <div className="animate-card-enter flex items-center gap-8 mb-10 pl-1" style={{ animationDelay: "120ms" }}>
               <StatBadge value="&lt;12ms" label="Sync Latency"    color="#34d399" />
               <div className="w-px h-8 bg-white/[0.07]" />
               <StatBadge value="4"       label="Languages"        color="#a78bfa" />
@@ -267,7 +325,7 @@ function Login() {
             </div>
 
             {/* Illustration area — floating UI cards over a gradient slab */}
-            <div className="animate-card-enter relative h-[310px]" style={{ opacity: 0, animationDelay: "180ms" }}>
+            <div className="animate-card-enter relative h-[310px]" style={{ animationDelay: "180ms" }}>
 
               {/* Base slab */}
               <div className="absolute inset-0 rounded-3xl border border-white/[0.07] overflow-hidden"
@@ -281,7 +339,7 @@ function Login() {
                   <div className="mt-1"><span className="text-pink-400">const</span><span className="text-sky-300"> session </span><span className="text-slate-400">= await </span><span className="text-blue-300">ai.createRoom</span><span className="text-slate-500">{"({"}</span></div>
                   <div className="ml-4"><span className="text-violet-300">model</span><span className="text-slate-500">: </span><span className="text-emerald-400">'gemini-2.0-flash'</span><span className="text-slate-500">,</span></div>
                   <div className="ml-4"><span className="text-violet-300">collab</span><span className="text-slate-500">: </span><span className="text-orange-400">true</span><span className="text-slate-500">,</span></div>
-                  <div className="ml-4"><span className="text-violet-300">sandbox</span><span className="text-slate-500">: </span><span className="text-emerald-400">'judge0'</span></div>
+                  <div className="ml-4"><span className="text-violet-300">sandbox</span><span className="text-slate-500">: </span><span className="text-emerald-400">'webcontainer'</span></div>
                   <div><span className="text-slate-500">{"})"}</span></div>
                   <div className="mt-1 bg-purple-500/[0.12] -mx-4 px-4 rounded"><span className="text-pink-400">await</span><span className="text-sky-300"> session</span><span className="text-slate-400">.invite(</span><span className="text-amber-400">teammates</span><span className="text-slate-400">)</span><span className="inline-block w-[6px] h-[12px] bg-purple-400 opacity-90 animate-blink rounded-[1px] ml-0.5 align-middle" /></div>
                 </div>
@@ -333,7 +391,7 @@ function Login() {
             </div>
 
             {/* Social proof */}
-            <div className="animate-card-enter flex items-center gap-3 mt-6" style={{ opacity: 0, animationDelay: "300ms" }}>
+            <div className="animate-card-enter flex items-center gap-3 mt-6" style={{ animationDelay: "300ms" }}>
               <div className="flex -space-x-2">
                 {["#7c3aed","#3b82f6","#10b981","#f59e0b","#ec4899"].map((c, i) => (
                   <div key={i} className="w-8 h-8 rounded-full border-2 border-[#050814] shadow-lg" style={{ background: `radial-gradient(circle at 35% 35%, ${c}dd, ${c}88)` }} />
@@ -350,7 +408,7 @@ function Login() {
 
           {/* ───── RIGHT — Auth Card ─────────────────────────────────────── */}
           <div className="flex flex-col items-center">
-            <div className="w-full animate-card-enter" style={{ opacity: 0, animationDelay: "80ms" }}>
+            <div className="w-full animate-card-enter" style={{ animationDelay: "80ms" }}>
               <div className="relative">
 
                 {/* === Rotating conic gradient border === */}
