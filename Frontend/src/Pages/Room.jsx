@@ -518,7 +518,26 @@ export default function Room() {
   const decorationsRef = useRef([]);
   const remoteCursorsRef = useRef({});
   const contentWidgetsRef = useRef({});
+  const nameWidgetTimeoutsRef = useRef({});
   const usersRef = useRef([]);
+
+  const cursorColors = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#3b82f6"];
+  const cursorColorsMap = {
+    "#a855f7": "purple",
+    "#06b6d4": "cyan",
+    "#10b981": "emerald",
+    "#fbbf24": "amber",
+    "#ec4899": "pink",
+    "#3b82f6": "blue"
+  };
+  const getColorForUser = (userId) => {
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+      hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const idx = Math.abs(hash) % cursorColors.length;
+    return cursorColors[idx];
+  };
 
   useEffect(() => { activeFileRef.current = activeFile; }, [activeFile]);
   useEffect(() => { usersRef.current = users; }, [users]);
@@ -618,7 +637,46 @@ export default function Room() {
       });
     });
 
-    socket.on("room-users", setUsers);
+    socket.on("room-users", (userList) => {
+      setUsers(userList);
+      
+      // Cleanup cursors for users who left
+      const activeUserIds = new Set(userList.map(u => u.userId));
+      
+      Object.keys(remoteCursorsRef.current).forEach(userId => {
+        if (!activeUserIds.has(userId)) {
+          delete remoteCursorsRef.current[userId];
+        }
+      });
+      
+      Object.keys(contentWidgetsRef.current).forEach(userId => {
+        if (!activeUserIds.has(userId)) {
+          if (editorRef.current && window.monaco) {
+            editorRef.current.removeContentWidget(contentWidgetsRef.current[userId]);
+          }
+          delete contentWidgetsRef.current[userId];
+          if (nameWidgetTimeoutsRef.current[userId]) {
+            clearTimeout(nameWidgetTimeoutsRef.current[userId]);
+            delete nameWidgetTimeoutsRef.current[userId];
+          }
+        }
+      });
+
+      // Redraw decorations to clean up left users
+      if (editorRef.current && window.monaco) {
+        decorationsRef.current = editorRef.current.deltaDecorations(
+          decorationsRef.current,
+          Object.entries(remoteCursorsRef.current).map(([id, data]) => {
+            const colorHex = getColorForUser(id);
+            const colorName = cursorColorsMap[colorHex] || "purple";
+            return {
+              range: new window.monaco.Range(data.position.lineNumber, data.position.column, data.position.lineNumber, data.position.column),
+              options: { className: `remote-cursor-${colorName}`, stickiness: 1 }
+            };
+          })
+        );
+      }
+    });
 
     socket.on("cursor-update", ({ userId, position, activeFile: remoteActiveFile }) => {
       if (!editorRef.current || !window.monaco) return;
@@ -636,38 +694,61 @@ export default function Room() {
         const username = remoteUser ? remoteUser.username : "User";
         remoteCursorsRef.current[userId] = { position, username };
         
+        // Pick unique color theme matching the user's cursor
+        const userColor = getColorForUser(userId);
+
         // Add new name widget
         const domNode = document.createElement("div");
         domNode.innerHTML = username;
-        domNode.style.background = "#58a6ff";
+        domNode.style.background = userColor;
         domNode.style.color = "white";
         domNode.style.fontSize = "10px";
-        domNode.style.padding = "2px 4px";
-        domNode.style.borderRadius = "3px";
+        domNode.style.fontWeight = "bold";
+        domNode.style.padding = "2px 6px";
+        domNode.style.borderRadius = "4px";
         domNode.style.whiteSpace = "nowrap";
         domNode.style.pointerEvents = "none";
-        domNode.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
-        domNode.style.zIndex = "10";
+        domNode.style.boxShadow = "0 3px 10px rgba(0,0,0,0.3)";
+        domNode.style.zIndex = "100";
+        domNode.style.border = "1px solid rgba(255,255,255,0.15)";
+        domNode.style.opacity = "1";
+        domNode.style.transform = "translateY(0)";
+        domNode.style.transition = "opacity 0.25s ease-out, transform 0.25s ease-out";
         
         const widget = {
           getId: () => `cursor-widget-${userId}`,
           getDomNode: () => domNode,
           getPosition: () => ({
             position: { lineNumber: position.lineNumber, column: position.column },
-            preference: [window.monaco.editor.ContentWidgetPositionPreference.ABOVE, window.monaco.editor.ContentWidgetPositionPreference.BELOW]
+            preference: [window.monaco.editor.ContentWidgetPositionPreference.ABOVE]
           })
         };
         
         editorRef.current.addContentWidget(widget);
         contentWidgetsRef.current[userId] = widget;
+
+        // Auto-hide the name tag after 3 seconds of cursor inactivity
+        if (nameWidgetTimeoutsRef.current[userId]) {
+          clearTimeout(nameWidgetTimeoutsRef.current[userId]);
+        }
+        nameWidgetTimeoutsRef.current[userId] = setTimeout(() => {
+          if (domNode) {
+            domNode.style.opacity = "0";
+            domNode.style.transform = "translateY(2px)";
+          }
+        }, 3000);
       }
 
       decorationsRef.current = editorRef.current.deltaDecorations(
         decorationsRef.current,
-        Object.entries(remoteCursorsRef.current).map(([id, data]) => ({
-          range: new window.monaco.Range(data.position.lineNumber, data.position.column, data.position.lineNumber, data.position.column),
-          options: { className: "remote-cursor", stickiness: 1 } // stickiness: NeverGrowsWhenTypingAtEdges
-        }))
+        Object.entries(remoteCursorsRef.current).map(([id, data]) => {
+          const colorHex = getColorForUser(id);
+          const colorName = cursorColorsMap[colorHex] || "purple";
+          return {
+            range: new window.monaco.Range(data.position.lineNumber, data.position.column, data.position.lineNumber, data.position.column),
+            options: { className: `remote-cursor-${colorName}`, stickiness: 1 }
+          };
+        })
       );
     });
 
@@ -728,6 +809,7 @@ export default function Room() {
 
   const handleEditorMount = (editor, monaco) => {
     editorRef.current = editor;
+    window.monaco = monaco;
     editor.onDidChangeCursorPosition((e) => {
       if (socket && socket.connected) {
         socket.emit("cursor-change", { roomId, position: e.position });
@@ -1017,12 +1099,12 @@ export default function Room() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #484f58; }
-        .remote-cursor {
-          width: 2px !important;
-          background-color: #58a6ff !important;
-          position: absolute;
-          z-index: 10;
-        }
+        .remote-cursor-purple { border-left: 2px solid #a855f7 !important; position: absolute; z-index: 10; margin-left: -1px; }
+        .remote-cursor-cyan { border-left: 2px solid #06b6d4 !important; position: absolute; z-index: 10; margin-left: -1px; }
+        .remote-cursor-emerald { border-left: 2px solid #10b981 !important; position: absolute; z-index: 10; margin-left: -1px; }
+        .remote-cursor-amber { border-left: 2px solid #fbbf24 !important; position: absolute; z-index: 10; margin-left: -1px; }
+        .remote-cursor-pink { border-left: 2px solid #ec4899 !important; position: absolute; z-index: 10; margin-left: -1px; }
+        .remote-cursor-blue { border-left: 2px solid #3b82f6 !important; position: absolute; z-index: 10; margin-left: -1px; }
       `}</style>
       <div
         className="h-screen flex flex-col overflow-hidden"

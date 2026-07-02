@@ -3,6 +3,9 @@ import { logout } from "../firebase/firebase";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { socket } from "../services/socket";
+import DocsTab from "../components/Docs/DocsTab";
+import SessionsTab from "../components/Sessions/SessionsTab";
+import AIAssistTab from "../components/AIAssist/AIAssistTab";
 
 /* ─── Profile Image Component with COEP/CORS & Error Fallback ─────────────── */
 function ProfileImage({ src, fallback, alt, className }) {
@@ -163,7 +166,7 @@ function InteractiveBg() {
 }
 
 /* ─── Card ─────────────────────────────────────────────────────────────────── */
-function Card({ children, className = "", delay = 0, accentColor = "purple", noPad = false }) {
+export function Card({ children, className = "", delay = 0, accentColor = "purple", noPad = false }) {
   const glows = {
     purple: "hover:border-purple-500/35 hover:shadow-[0_0_70px_-10px_rgba(168,85,247,0.45)]",
     blue:   "hover:border-blue-500/35   hover:shadow-[0_0_70px_-10px_rgba(59,130,246,0.45)]",
@@ -309,6 +312,7 @@ function Dashboard() {
   const [copied, setCopied]       = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [template, setTemplate] = useState("react");
+  const [activeTab, setActiveTab] = useState("Dashboard");
 
  useEffect(() => {
    socket.connect();
@@ -442,17 +446,18 @@ function Dashboard() {
 
           {/* Nav centre — feature pills */}
           <nav className="hidden md:flex items-center gap-1 text-xs font-semibold">
-            {["Dashboard", "Sessions", "AI Assist", "Docs"].map((item, i) => (
-              <span
+            {["Dashboard", "Sessions", "AI Assist", "Docs"].map((item) => (
+              <button
                 key={item}
-                className={`px-3.5 py-1.5 rounded-lg cursor-default transition-all duration-150 ${
-                  i === 0
-                    ? "bg-purple-500/15 text-purple-300 border border-purple-500/20"
-                    : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
+                onClick={() => setActiveTab(item)}
+                className={`px-3.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 border focus:outline-none ${
+                  activeTab === item
+                    ? "bg-purple-500/15 text-purple-300 border-purple-500/20"
+                    : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04] border-transparent"
                 }`}
               >
                 {item}
-              </span>
+              </button>
             ))}
           </nav>
 
@@ -490,7 +495,9 @@ function Dashboard() {
       {/* ── Main Content ─────────────────────────────────────────────────────── */}
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
-        {/* ── HERO — Two column layout ─────────────────────────────────────── */}
+        {activeTab === "Dashboard" && (
+          <>
+            {/* ── HERO — Two column layout ─────────────────────────────────────── */}
         <section className="mb-14 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
 
           {/* Left — Text */}
@@ -579,16 +586,7 @@ function Dashboard() {
                 <CodePreview />
               </div>
               
-              {/* AI chip */}
-              <div className="absolute -bottom-4 -left-4 flex items-center gap-2.5 border border-white/[0.12] rounded-xl px-3.5 py-2.5 shadow-2xl backdrop-blur-xl" style={{ background: "rgba(13,17,23,0.9)" }}>
-                <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-purple-600 to-blue-500 flex items-center justify-center text-[9px] font-black text-white shrink-0 shadow-lg shadow-purple-500/30">
-                  AI
-                </div>
-                <div>
-                  <div className="text-[10px] font-black text-slate-300 leading-none mb-0.5">Gemini Copilot</div>
-                  <div className="text-[9px] text-emerald-400 font-bold">● Typing suggestions active</div>
-                </div>
-              </div>
+              
             </div>
           </div>
         </section>
@@ -860,6 +858,30 @@ function Dashboard() {
 
           </div>
         </div>
+          </>
+        )}
+
+        {activeTab === "Sessions" && (
+          <SessionsTab handleJoinRoomShortcut={(id) => {
+            setJoinId(id);
+            setActiveTab("Dashboard");
+            setTimeout(() => {
+              const input = document.getElementById("join-room-input");
+              if (input) {
+                input.focus();
+                input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }, 100);
+          }} />
+        )}
+
+        {activeTab === "AI Assist" && (
+          <AIAssistTab />
+        )}
+
+        {activeTab === "Docs" && (
+          <DocsTab />
+        )}
       </main>
 
       {/* ── Footer ─────────────────────────────────────────────────────────── */}
