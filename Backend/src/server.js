@@ -19,16 +19,24 @@ app.use(cors());
 app.use(express.json());
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
-.then(() => console.log("MongoDB connected successfully"))
-.catch(err => console.error("MongoDB connection error:", err));
+if (!process.env.MONGO_URI) {
+  console.error("WARNING: MONGO_URI environment variable is not defined!");
+} else {
+  mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log("MongoDB connected successfully"))
+    .catch(err => console.error("MongoDB connection error:", err));
+}
 
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
+    origin: (origin, callback) => {
+      // Allow all origins dynamically to support custom, branch, or deployed URLs
+      callback(null, true);
+    },
     methods: ["GET", "POST"],
+    credentials: true,
   },
   maxHttpBufferSize: 1e9, // 1 GB limit for large workspace uploads
 });
@@ -59,7 +67,7 @@ const syncFilesToDisk = (roomId, codeString) => {
     });
   } catch (err) {
     console.error("Sync error:", err);
-    require("fs").appendFileSync(path.join(os.tmpdir(), "sync-error.log"), err.stack + "\n");
+    fs.appendFileSync(path.join(os.tmpdir(), "sync-error.log"), err.stack + "\n");
   }
 };
 
@@ -126,13 +134,16 @@ io.on("connection", (socket) => {
     try {
       const existing = await Room.findOne({ roomId });
       if (!existing) {
-        await Room.create({
+        const newRoom = await Room.create({
           roomId,
           name: roomName || 'Untitled Project',
           ownerId: data.ownerId || '',
           template: data.template || 'react',
           files: data.files || INITIAL_WORKSPACE
         });
+        syncFilesToDisk(roomId, newRoom.files);
+      } else {
+        syncFilesToDisk(roomId, existing.files);
       }
     } catch (err) {
       console.error("MongoDB create room error:", err);
@@ -172,6 +183,7 @@ io.on("connection", (socket) => {
           files: INITIAL_WORKSPACE
         });
       }
+      syncFilesToDisk(roomId, room.files);
       socket.emit("receive-code", room.files);
     } catch (err) {
       console.error("MongoDB join room error:", err);

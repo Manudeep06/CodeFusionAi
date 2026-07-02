@@ -520,6 +520,7 @@ export default function Room() {
   const contentWidgetsRef = useRef({});
   const nameWidgetTimeoutsRef = useRef({});
   const usersRef = useRef([]);
+  const isLoadedFromServerRef = useRef(false);
 
   const cursorColors = ["#a855f7", "#06b6d4", "#10b981", "#fbbf24", "#ec4899", "#3b82f6"];
   const cursorColorsMap = {
@@ -546,6 +547,9 @@ export default function Room() {
   useEffect(() => {
     if (!roomId) return;
     loadWorkspaceFiles(roomId).then(localFiles => {
+      // Prevent slow IndexedDB load from overwriting newer files received from the socket server
+      if (isLoadedFromServerRef.current) return;
+      
       if (localFiles && localFiles.length > 0) {
         setFiles(localFiles);
         const first = localFiles.find(f => !f.isFolder);
@@ -585,19 +589,22 @@ export default function Room() {
     // Ensure the socket is connected
     if (!socket.connected) socket.connect();
 
-    socket.emit("join-room", { roomId, username, photoURL });
+    const handleConnect = () => {
+      socket.emit("join-room", { roomId, username, photoURL });
+    };
 
-    // Sync current files to disk immediately after joining (handles server restarts)
+    if (socket.connected) {
+      handleConnect();
+    }
+
+    socket.on("connect", handleConnect);
+
     socket.on("room-joined", () => {
-      setFiles((currentFiles) => {
-        if (currentFiles.length > 0) {
-          socket.emit("sync-workspace", { roomId, code: JSON.stringify(currentFiles) });
-        }
-        return currentFiles;
-      });
+      console.log("Room joined successfully:", roomId);
     });
 
     socket.on("receive-code", (incomingCode) => {
+      isLoadedFromServerRef.current = true;
       try {
         const parsed = JSON.parse(incomingCode);
         if (Array.isArray(parsed)) {
@@ -755,12 +762,13 @@ export default function Room() {
 
 
     return () => {
+      socket.off("connect", handleConnect);
       socket.off("room-joined");
       socket.off("receive-code");
       socket.off("room-users");
       socket.off("cursor-update");
     };
-  }, [roomId]);
+  }, [roomId, username, photoURL]);
 
   /* ── Sync Files to WebContainer (Debounced) ── */
   useEffect(() => {

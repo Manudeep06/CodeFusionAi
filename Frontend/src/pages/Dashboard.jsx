@@ -17,6 +17,7 @@ function ProfileImage({ src, fallback, alt, className }) {
         src={src}
         alt={alt || ""}
         crossOrigin="anonymous"
+        referrerPolicy="no-referrer"
         onError={() => setImgFailed(true)}
         className={className}
       />
