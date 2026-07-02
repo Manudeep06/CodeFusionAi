@@ -1,10 +1,6 @@
 import { initializeApp } from "firebase/app";
 import {
-  initializeAuth,
-  indexedDBLocalPersistence,
-  browserLocalPersistence,
-  browserSessionPersistence,
-  browserPopupRedirectResolver,
+  getAuth,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
@@ -28,14 +24,8 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Authentication without loading the hidden cross-origin iframe (which is blocked by COEP)
-export const auth = initializeAuth(app, {
-  persistence: [
-    indexedDBLocalPersistence,
-    browserLocalPersistence,
-    browserSessionPersistence,
-  ]
-});
+// Initialize Authentication
+export const auth = getAuth(app);
 
 // Google Provider
 export const provider = new GoogleAuthProvider();
@@ -46,13 +36,14 @@ provider.addScope("email");
 provider.addScope("profile");
 
 // Google Sign In — uses popup (works on localhost & all domains reliably)
-export const signInWithGoogle = () => {
-  return signInWithPopup(auth, provider, browserPopupRedirectResolver);
+export const signInWithGoogle = async () => {
+  const result = await signInWithPopup(auth, provider);
+  return result;
 };
 
 // Google Sign In Redirect fallback
 export const signInWithGoogleRedirect = async () => {
-  return await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
+  return await signInWithRedirect(auth, provider);
 };
 
 // No-op kept for backwards compat — popup flow doesn't need a redirect handler
