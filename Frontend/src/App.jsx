@@ -1,9 +1,9 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import ProtectedRoute from "./routes/ProtectedRoute";
-import Room from "./pages/Room";
+import Login from "./pages/Login.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
+import ProtectedRoute from "./routes/ProtectedRoute.jsx";
+import Room from "./pages/Room.jsx";
 
 function App() {
   return (
