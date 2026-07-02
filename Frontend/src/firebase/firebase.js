@@ -47,9 +47,8 @@ provider.addScope("email");
 provider.addScope("profile");
 
 // Google Sign In — uses popup (works on localhost & all domains reliably)
-export const signInWithGoogle = async () => {
-  const result = await signInWithPopup(auth, provider);
-  return result; // Returns UserCredential immediately on success
+export const signInWithGoogle = () => {
+  return signInWithPopup(auth, provider);
 };
 
 // Google Sign In Redirect fallback

@@ -178,37 +178,44 @@ function Login() {
   // Redirect to dashboard if already signed in (full reload required to load headers)
   useEffect(() => { if (user) window.location.href = "/dashboard"; }, [user]);
 
-  const google = async () => {
+  const google = () => {
+    // Start Google Sign-In synchronously in the click call stack!
+    // This prevents the browser popup blocker from intercepting it.
+    const signInPromise = signInWithGoogle();
+    
+    // Set loading and clear errors now that the popup is open
     setLoading(true);
     setErrMsg("");
-    try {
-      const result = await signInWithGoogle();
-      if (result?.user) {
-        setOkMsg("Signed in successfully! Redirecting…");
-        setTimeout(() => { window.location.href = "/dashboard"; }, 500);
-      }
-    } catch (err) {
-      console.error("Google Sign-In error:", err);
-      if (err.code === "auth/popup-blocked") {
-        setOkMsg("Popup blocked. Redirecting to Google Sign-In instead...");
-        try {
-          await signInWithGoogleRedirect();
-        } catch (redirErr) {
-          console.error("Google Redirect error:", redirErr);
-          setErrMsg("Google login failed. Please allow popups or try again.");
+    setOkMsg("");
+
+    signInPromise
+      .then((result) => {
+        if (result?.user) {
+          setOkMsg("Signed in successfully! Redirecting…");
+          setTimeout(() => { window.location.href = "/dashboard"; }, 500);
         }
-      } else if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
-        setErrMsg("Sign-in was cancelled. Please try again.");
-      } else if (err.code === "auth/network-request-failed") {
-        setErrMsg("Network error. Please check your connection and try again.");
-      } else if (err.code === "auth/unauthorized-domain") {
-        setErrMsg("This domain is not authorized for Google Sign-In.");
-      } else {
-        setErrMsg(err.message || "Google Sign-In failed. Please try again.");
-      }
-    } finally {
-      setLoading(false);
-    }
+      })
+      .catch((err) => {
+        console.error("Google Sign-In error:", err);
+        if (err.code === "auth/popup-blocked") {
+          setOkMsg("Popup blocked. Redirecting to Google Sign-In instead...");
+          signInWithGoogleRedirect().catch((redirErr) => {
+            console.error("Google Redirect error:", redirErr);
+            setErrMsg("Google login failed. Please allow popups or try again.");
+          });
+        } else if (err.code === "auth/popup-closed-by-user" || err.code === "auth/cancelled-popup-request") {
+          setErrMsg("Sign-in was cancelled. Please try again.");
+        } else if (err.code === "auth/network-request-failed") {
+          setErrMsg("Network error. Please check your connection and try again.");
+        } else if (err.code === "auth/unauthorized-domain") {
+          setErrMsg("This domain is not authorized for Google Sign-In.");
+        } else {
+          setErrMsg(err.message || "Google Sign-In failed. Please try again.");
+        }
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   };
   const submit = async (e) => {
     e.preventDefault(); setLoading(true); setErrMsg(""); setOkMsg("");
