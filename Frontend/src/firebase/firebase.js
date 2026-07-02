@@ -34,8 +34,7 @@ export const auth = initializeAuth(app, {
     indexedDBLocalPersistence,
     browserLocalPersistence,
     browserSessionPersistence,
-  ],
-  popupRedirectResolver: browserPopupRedirectResolver,
+  ]
 });
 
 // Google Provider
@@ -48,12 +47,12 @@ provider.addScope("profile");
 
 // Google Sign In — uses popup (works on localhost & all domains reliably)
 export const signInWithGoogle = () => {
-  return signInWithPopup(auth, provider);
+  return signInWithPopup(auth, provider, browserPopupRedirectResolver);
 };
 
 // Google Sign In Redirect fallback
 export const signInWithGoogleRedirect = async () => {
-  return await signInWithRedirect(auth, provider);
+  return await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
 };
 
 // No-op kept for backwards compat — popup flow doesn't need a redirect handler
