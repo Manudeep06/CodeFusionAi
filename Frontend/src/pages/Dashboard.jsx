@@ -555,13 +555,19 @@ function Dashboard() {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
                 Create New Room
               </button>
-              <a
-                href="#join"
+              <button
+                onClick={() => {
+                  const input = document.getElementById('join-room-input');
+                  if (input) {
+                    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    setTimeout(() => input.focus(), 300);
+                  }
+                }}
                 className="flex items-center gap-2.5 bg-white/[0.05] border border-white/[0.12] hover:bg-white/[0.09] hover:border-purple-500/30 text-slate-300 hover:text-white font-bold py-3 px-6 rounded-xl transition-all duration-200 text-sm cursor-pointer"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14" /></svg>
                 Join Session
-              </a>
+              </button>
             </div>
 
             {/* Status strip */}
