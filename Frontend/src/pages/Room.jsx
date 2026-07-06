@@ -8,6 +8,7 @@ import { socket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
 import TerminalComponent from "../components/Terminal";
 import { syncFilesToWebContainer, onServerReady } from "../services/webcontainer";
+import { loadWorkspaceFiles, saveWorkspaceFiles } from "../services/db";
 import RoomAIAssist from "../components/AIAssist/RoomAIAssist";
 
 /* ═══════════════════════════════════════
