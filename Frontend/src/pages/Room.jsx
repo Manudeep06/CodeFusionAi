@@ -8,7 +8,7 @@ import { socket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
 import TerminalComponent from "../components/Terminal";
 import { syncFilesToWebContainer, onServerReady } from "../services/webcontainer";
-import { loadWorkspaceFiles, saveWorkspaceFiles } from "../services/db";
+import RoomAIAssist from "../components/AIAssist/RoomAIAssist";
 
 /* ═══════════════════════════════════════
    CONSTANTS
@@ -84,6 +84,8 @@ function FileIcon({ filename, size = 14 }) {
     </svg>
   );
 }
+
+
 
 function FolderIcon({ open = false, size = 14 }) {
   return (
@@ -420,12 +422,7 @@ export default function Room() {
   const [users,           setUsers]           = useState([]);
   const [isRunning,       setIsRunning]       = useState(false);
   const [activePanel,     setActivePanel]     = useState("explorer"); // explorer | users | ai
-  const [aiInput,         setAiInput]         = useState("");
-  const [aiMessages,      setAiMessages]      = useState([
-    { role: "assistant", text: "Hi! I'm your AI coding assistant. Ask me anything about your code, algorithms, or debugging." },
-  ]);
-  const [aiLoading,       setAiLoading]       = useState(false);
-  const aiBottomRef = useRef(null);
+
 
   /* ── Terminal & Sidebar resize ── */
   const [terminalHeight, setTerminalHeight] = useState(250);
@@ -1383,149 +1380,12 @@ export default function Room() {
 
               {/* ── AI ASSISTANT ── */}
               {activePanel === "ai" && (
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  {/* Messages */}
-                  <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3">
-                    {aiMessages.map((msg, i) => (
-                      <div key={i} className={`flex flex-col gap-1 ${msg.role === "user" ? "items-end" : "items-start"}`}>
-                        {msg.role === "assistant" && (
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <div
-                              className="w-4 h-4 rounded flex items-center justify-center text-[8px] font-black"
-                              style={{ background: "#21262d", color: "#fff" }}
-                            >✦</div>
-                            <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "#a371f7" }}>AI</span>
-                          </div>
-                        )}
-                        <div
-                          className="max-w-full rounded-lg px-3 py-2 text-[12px] leading-5 whitespace-pre-wrap break-words"
-                          style={{
-                            background: msg.role === "user"
-                              ? "#21262d"
-                              : "#1c2128",
-                            border: msg.role === "user"
-                              ? "1px solid #58a6ff30"
-                              : "1px solid #21262d",
-                            color: "#e6edf3",
-                          }}
-                        >
-                          {msg.text}
-                        </div>
-                      </div>
-                    ))}
-                    {aiLoading && (
-                      <div className="flex items-center gap-2 px-1">
-                        <div className="w-4 h-4 rounded flex items-center justify-center text-[8px]" style={{ background: "#21262d", color: "#fff" }}>✦</div>
-                        <div className="flex gap-1">
-                          {[0,1,2].map((j) => (
-                            <span key={j} className="w-1.5 h-1.5 rounded-full" style={{ background: "#a371f7", animation: `pulse 1s ${j * 0.2}s infinite` }} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <div ref={aiBottomRef} />
-                  </div>
-
-                  {/* Quick prompts */}
-                  <div className="px-3 pb-2 flex flex-col gap-1.5">
-                    <p className="text-[9px] uppercase tracking-widest font-bold" style={{ color: "#484f58" }}>Quick Prompts</p>
-                    <div className="flex flex-col gap-1">
-                      {[
-                        "Explain this code",
-                        "Find bugs",
-                        "Optimize performance",
-                        "Add comments",
-                      ].map((prompt) => (
-                        <button
-                          key={prompt}
-                          onClick={() => {
-                            const msg = `${prompt}: \n\`\`\`\n${code.slice(0, 400)}${code.length > 400 ? "..." : ""}\n\`\`\``;
-                            setAiMessages((prev) => [...prev, { role: "user", text: prompt }]);
-                            setAiLoading(true);
-                            setTimeout(() => {
-                              setAiMessages((prev) => [...prev, {
-                                role: "assistant",
-                                text: `Here's my analysis for "${prompt}":\n\nThis is a ${language} file. I can see ${files.filter(f=>!f.isFolder).length} file(s) in your workspace.\n\n💡 Connect a real AI API (OpenAI / Gemini) to get live responses!`,
-                              }]);
-                              setAiLoading(false);
-                              setTimeout(() => aiBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-                            }, 1200);
-                          }}
-                          className="text-left px-2.5 py-1.5 rounded-lg text-[11px] transition-all duration-150"
-                          style={{ background: "#1c2128", color: "#7d8590", border: "1px solid #21262d" }}
-                          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#a371f740"; e.currentTarget.style.color = "#e6edf3"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#21262d"; e.currentTarget.style.color = "#7d8590"; }}
-                        >
-                          {prompt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Input */}
-                  <div className="px-3 pb-3">
-                    <div
-                      className="flex items-end gap-2 rounded-xl p-2"
-                      style={{ background: "#0d1117", border: "1px solid #30363d" }}
-                    >
-                      <textarea
-                        value={aiInput}
-                        onChange={(e) => setAiInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            if (!aiInput.trim() || aiLoading) return;
-                            const userText = aiInput.trim();
-                            setAiMessages((prev) => [...prev, { role: "user", text: userText }]);
-                            setAiInput("");
-                            setAiLoading(true);
-                            setTimeout(() => {
-                              setAiMessages((prev) => [...prev, {
-                                role: "assistant",
-                                text: `Thanks for your question about "${userText.slice(0, 60)}"!\n\n💡 Connect a real AI API (OpenAI / Gemini) to get live intelligent responses here.`,
-                              }]);
-                              setAiLoading(false);
-                              setTimeout(() => aiBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-                            }, 1000);
-                          }
-                        }}
-                        placeholder="Ask AI anything... (Enter to send)"
-                        rows={2}
-                        className="flex-1 bg-transparent outline-none resize-none text-[12px] leading-5"
-                        style={{ color: "#e6edf3", fontFamily: "'Segoe UI', sans-serif" }}
-                      />
-                      <button
-                        className="w-7 h-7 flex items-center justify-center rounded-lg shrink-0 transition-all duration-150"
-                        style={{
-                          background: aiInput.trim() && !aiLoading
-                            ? "#21262d"
-                            : "#21262d",
-                          color: aiInput.trim() && !aiLoading ? "#fff" : "#484f58",
-                        }}
-                        onClick={() => {
-                          if (!aiInput.trim() || aiLoading) return;
-                          const userText = aiInput.trim();
-                          setAiMessages((prev) => [...prev, { role: "user", text: userText }]);
-                          setAiInput("");
-                          setAiLoading(true);
-                          setTimeout(() => {
-                            setAiMessages((prev) => [...prev, {
-                              role: "assistant",
-                              text: `Thanks for your question about "${userText.slice(0, 60)}"!\n\n💡 Connect a real AI API (OpenAI / Gemini) to get live intelligent responses here.`,
-                            }]);
-                            setAiLoading(false);
-                            setTimeout(() => aiBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-                          }, 1000);
-                        }}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                          <path d="M22 2L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          <path d="M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <RoomAIAssist
+                  code={code}
+                  language={language}
+                  activeFileName={activeFile}
+                  files={files}
+                />
               )}
 
 
