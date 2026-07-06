@@ -1,112 +1,344 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "../../pages/Dashboard";
+import { sendMessage } from "../../services/aiService";
+import ChatHistorySidebar from "./ChatHistorySidebar";
+import ChatWindow from "./ChatWindow";
 
 export default function AIAssistTab() {
-  const [messages, setMessages] = useState([
-    { role: "assistant", text: "Welcome to CodeFusionAI Copilot Hub! Ask me any programming question, request templates, or explore details about the system's architecture." }
-  ]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const bottomRef = useRef(null);
-
-  const handleSend = () => {
-    if (!input.trim() || loading) return;
-    const text = input.trim();
-    setMessages((prev) => [...prev, { role: "user", text }]);
-    setInput("");
-    setLoading(true);
-
-    setTimeout(() => {
-      let reply = "";
-      if (text.toLowerCase().includes("architect") || text.toLowerCase().includes("design")) {
-        reply = "CodeFusionAI architecture is designed as a secure, distributed development network. The core execution sandbox uses **WebContainers** for client-side sandboxing, preventing malicious scripts from compromising the main backend host system. Real-time document collaboration uses **Socket.IO** rooms synchronizing file buffers back to a persistent **MongoDB Atlas** NoSQL database.";
-      } else if (text.toLowerCase().includes("template") || text.toLowerCase().includes("react")) {
-        reply = "You can bootstrap a project using React (Vite-based), Vue (Vite-based), Svelte (Vite-based), Vanilla JS, or Node.js. Select a template on the Dashboard, name the project, and click 'Create Room'. The system initializes files into browser IndexedDB and syncs them automatically.";
-      } else {
-        reply = `I see you are interested in "${text}". CodeFusionAI supports hot-reloaded dev servers, package installs, and secure script terminals. Feel free to spin up a collaborative room to start pair-programming with your team!`;
+  // Load chats from localStorage or initialize with a welcome chat
+  const [chats, setChats] = useState(() => {
+    const saved = localStorage.getItem("codefusionai_chats");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Error parsing chats history:", e);
       }
-      
-      setMessages((prev) => [...prev, { role: "assistant", text: reply }]);
-      setLoading(false);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-    }, 1000);
+    }
+    return [
+      {
+        id: "chat_default",
+        title: "Welcome Copilot",
+        messages: [
+          {
+            role: "assistant",
+            text: "Welcome to CodeFusionAI Copilot Hub! Ask me any programming question, request templates, or explore details about the system's architecture."
+          }
+        ],
+        model: "Gemini-2.5-Flash"
+      }
+    ];
+  });
+
+  // Track active chat ID
+  const [activeChatId, setActiveChatId] = useState(() => {
+    const lastActive = localStorage.getItem("codefusionai_active_chat_id");
+    if (lastActive) {
+      return lastActive;
+    }
+    const saved = localStorage.getItem("codefusionai_chats");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.length > 0) return parsed[0].id;
+      } catch (e) {}
+    }
+    return "chat_default";
+  });
+
+  // Track theme preference
+  const [activeTheme, setActiveTheme] = useState(() => {
+    const saved = localStorage.getItem("codefusionai_theme");
+    return saved === "light" || saved === "notebook" ? "light" : "dark";
+  });
+
+  const [loading, setLoading] = useState(false);
+
+  // Sync active chat ID to localStorage
+  useEffect(() => {
+    localStorage.setItem("codefusionai_active_chat_id", activeChatId);
+  }, [activeChatId]);
+
+  const handleSelectChat = (id) => {
+    setActiveChatId(id);
   };
 
+  const handleNewChat = () => {
+    const newChat = {
+      id: "chat_" + Date.now(),
+      title: "New Chat",
+      messages: [
+        {
+          role: "assistant",
+          text: "Hi! I am your AI Copilot. How can I help you study coding today? Pick a quick starter prompt or write your own!"
+        }
+      ],
+      model: "Gemini-2.5-Flash"
+    };
+    const updatedChats = [newChat, ...chats];
+    setChats(updatedChats);
+    setActiveChatId(newChat.id);
+    localStorage.setItem("codefusionai_chats", JSON.stringify(updatedChats));
+  };
+
+  const handleDeleteChat = (chatId) => {
+    const updatedChats = chats.filter((c) => c.id !== chatId);
+    setChats(updatedChats);
+    localStorage.setItem("codefusionai_chats", JSON.stringify(updatedChats));
+
+    if (activeChatId === chatId) {
+      if (updatedChats.length > 0) {
+        setActiveChatId(updatedChats[0].id);
+      } else {
+        // Force create a new chat if list becomes empty
+        const forceChat = {
+          id: "chat_" + Date.now(),
+          title: "New Chat",
+          messages: [
+            {
+              role: "assistant",
+              text: "Hi! I am your AI Copilot. How can I help you study coding today?"
+            }
+          ],
+          model: "Gemini-2.5-Flash"
+        };
+        setChats([forceChat]);
+        setActiveChatId(forceChat.id);
+        localStorage.setItem("codefusionai_chats", JSON.stringify([forceChat]));
+      }
+    }
+  };
+
+  const handleRenameChat = (chatId, newTitle) => {
+    const updatedChats = chats.map((c) => {
+      if (c.id === chatId) {
+        return { ...c, title: newTitle };
+      }
+      return c;
+    });
+    setChats(updatedChats);
+    localStorage.setItem("codefusionai_chats", JSON.stringify(updatedChats));
+  };
+
+  const handleClearChat = () => {
+    const updatedChats = chats.map((c) => {
+      if (c.id === activeChatId) {
+        return {
+          ...c,
+          messages: [
+            {
+              role: "assistant",
+              text: "Conversation cleared. Ask me anything!"
+            }
+          ]
+        };
+      }
+      return c;
+    });
+    setChats(updatedChats);
+    localStorage.setItem("codefusionai_chats", JSON.stringify(updatedChats));
+  };
+
+  const handleThemeChange = (theme) => {
+    setActiveTheme(theme);
+    localStorage.setItem("codefusionai_theme", theme);
+  };
+
+  const handleSendMessage = async (text) => {
+    const chat = chats.find((c) => c.id === activeChatId);
+    if (!chat || loading) return;
+
+    // Add user message
+    const userMsg = { role: "user", text };
+    const updatedMessages = [...chat.messages, userMsg];
+
+    // Determine if we need to auto-rename chat title from "New Chat" or "Welcome Copilot"
+    let newTitle = chat.title;
+    if (chat.title === "New Chat" || chat.title === "Welcome Copilot") {
+      newTitle = text.length > 25 ? text.substring(0, 22) + "..." : text;
+    }
+
+    const updatedChats = chats.map((c) => {
+      if (c.id === activeChatId) {
+        return {
+          ...c,
+          title: newTitle,
+          messages: updatedMessages,
+        };
+      }
+      return c;
+    });
+
+    setChats(updatedChats);
+    localStorage.setItem("codefusionai_chats", JSON.stringify(updatedChats));
+    setLoading(true);
+
+    try {
+      // Package conversation turns (up to last 6 messages) to provide Gemini context
+      const historyContext = updatedMessages.slice(-6);
+      let promptWithContext = "";
+      if (historyContext.length > 1) {
+        promptWithContext = "You are a helpful coding assistant. Below is the recent chat history for context:\n\n";
+        historyContext.slice(0, -1).forEach((m) => {
+          promptWithContext += `${m.role === "user" ? "User" : "Assistant"}: ${m.text}\n\n`;
+        });
+        promptWithContext += `Current prompt: ${text}\n\nPlease respond based on the conversation context above.`;
+      } else {
+        promptWithContext = text;
+      }
+
+      // Query backend
+      const reply = await sendMessage(promptWithContext);
+
+      // Add AI reply
+      const aiReplyMsg = { role: "assistant", text: reply };
+      const finalChats = updatedChats.map((c) => {
+        if (c.id === activeChatId) {
+          return {
+            ...c,
+            messages: [...updatedMessages, aiReplyMsg],
+          };
+        }
+        return c;
+      });
+
+      setChats(finalChats);
+      localStorage.setItem("codefusionai_chats", JSON.stringify(finalChats));
+    } catch (error) {
+      console.error(error);
+      const errorMsg = { role: "assistant", text: "Failed to generate response. Please verify connection and try again." };
+      const finalChats = updatedChats.map((c) => {
+        if (c.id === activeChatId) {
+          return {
+            ...c,
+            messages: [...updatedMessages, errorMsg],
+          };
+        }
+        return c;
+      });
+      setChats(finalChats);
+      localStorage.setItem("codefusionai_chats", JSON.stringify(finalChats));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const activeChat = chats.find((c) => c.id === activeChatId);
+
   return (
-    <div className="animate-card-enter max-w-3xl mx-auto">
-      <Card accentColor="purple" className="flex flex-col h-[550px] !p-0 overflow-hidden">
-        {/* Chat Header */}
-        <div className="px-6 py-4 border-b border-white/[0.06] bg-white/[0.01] flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-xs font-black text-white shadow-lg shadow-purple-500/20">
-              AI
-            </div>
-            <div>
-              <h3 className="text-sm font-black text-white leading-tight">Copilot Assistant</h3>
-              <p className="text-[10px] text-slate-500 mt-0.5">Gemini-2.0-Flash</p>
-            </div>
-          </div>
-          <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 text-[9px] font-black uppercase px-2.5 py-1 rounded-full border border-emerald-500/20">
-            <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
-            AI Ready
-          </span>
-        </div>
+    <div className={`ai-theme-wrapper theme-${activeTheme} max-w-5xl mx-auto px-1 sm:px-4`}>
+      {/* Dynamic CSS Stylesheet Injector for Themes */}
+      <style>{`
+        /* --- Themes Definitions --- */
+        .theme-dark {
+          --ai-bg: rgba(13, 10, 28, 0.7);
+          --ai-sidebar-bg: rgba(20, 16, 42, 0.85);
+          --ai-text: #f8fafc;
+          --ai-text-muted: #94a3b8;
+          --ai-accent: #8b5cf6;
+          --ai-accent-hover: #7c3aed;
+          --ai-border: rgba(255, 255, 255, 0.08);
+          --ai-msg-user: #8b5cf6;
+          --ai-msg-user-text: #ffffff;
+          --ai-msg-ai: rgba(255, 255, 255, 0.035);
+          --ai-msg-ai-text: #e2e8f0;
+          --ai-input-bg: rgba(0, 0, 0, 0.35);
+          --ai-sidebar-hover: rgba(255, 255, 255, 0.05);
+          --ai-font: 'Inter', system-ui, sans-serif;
+          --ai-card-shadow: 0 12px 48px rgba(0,0,0,0.6);
+          --ai-header-bg: rgba(0, 0, 0, 0.05);
+          --ai-input-panel-bg: rgba(0, 0, 0, 0.1);
+        }
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.map((m, i) => (
-            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"} items-start gap-3`}>
-              {m.role === "assistant" && (
-                <div className="w-7 h-7 rounded-lg bg-purple-500/15 border border-purple-500/20 flex items-center justify-center text-[10px] font-bold text-purple-400 shrink-0 select-none">
-                  AI
-                </div>
-              )}
-              <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-xs leading-relaxed ${
-                  m.role === "user"
-                    ? "bg-purple-600 text-white font-medium rounded-tr-none shadow-[0_4px_16px_rgba(147,51,234,0.15)]"
-                    : "bg-white/[0.03] border border-white/[0.06] text-slate-300 rounded-tl-none"
-                }`}
-              >
-                {m.text}
-              </div>
-            </div>
-          ))}
-          {loading && (
-            <div className="flex justify-start items-center gap-3">
-              <div className="w-7 h-7 rounded-lg bg-purple-500/15 border border-purple-500/20 flex items-center justify-center text-[10px] font-bold text-purple-400 shrink-0 select-none">
-                AI
-              </div>
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl rounded-tl-none px-4 py-3 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
-            </div>
-          )}
-          <div ref={bottomRef} />
-        </div>
+        .theme-light {
+          --ai-bg: #faf9f6;
+          --ai-sidebar-bg: #f4f3ee;
+          --ai-text: #0f172a;
+          --ai-text-muted: #475569;
+          --ai-accent: #4f46e5;
+          --ai-accent-hover: #3730a3;
+          --ai-border: rgba(0, 0, 0, 0.07);
+          --ai-msg-user: linear-gradient(135deg, #6366f1, #4f46e5);
+          --ai-msg-user-text: #ffffff;
+          --ai-msg-ai: #ffffff;
+          --ai-msg-ai-text: #0f172a;
+          --ai-input-bg: #ffffff;
+          --ai-sidebar-hover: rgba(0, 0, 0, 0.04);
+          --ai-font: 'Outfit', 'Inter', system-ui, sans-serif;
+          --ai-card-shadow: 0 20px 40px rgba(15, 23, 42, 0.06);
+          --ai-header-bg: rgba(0, 0, 0, 0.02);
+          --ai-input-panel-bg: transparent;
+        }
 
-        {/* Input */}
-        <div className="p-4 border-t border-white/[0.06] bg-white/[0.01]">
-          <div className="flex items-center gap-2.5 rounded-xl border border-white/[0.08] bg-black/30 p-2 focus-within:border-purple-500/40 transition duration-200">
-            <input
-              type="text"
-              placeholder="Ask anything about CodeFusionAI..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              className="flex-1 bg-transparent border-none outline-none text-slate-200 text-xs px-2"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || loading}
-              className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition duration-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Send
-            </button>
-          </div>
-        </div>
+        /* --- Scrollbar styling overrides --- */
+        .scrollbar-thin::-webkit-scrollbar {
+          width: 5px;
+          height: 5px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+          background: var(--ai-border);
+          border-radius: 9px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+          background: var(--ai-accent);
+        }
+
+        /* --- Sidebar Item styles --- */
+        .ai-sidebar-item.active {
+          background-color: var(--ai-sidebar-hover);
+          border-left: 3px solid var(--ai-accent);
+          padding-left: 7px;
+        }
+        .ai-sidebar-item:hover {
+          background-color: var(--ai-sidebar-hover);
+        }
+
+        /* --- Notebook Ruled Lines Pattern (Bullet Journal dot-grid style in Light Mode) --- */
+        .theme-light .bg-notebook-pattern {
+          background-color: #faf9f6 !important;
+          background-image: radial-gradient(rgba(0, 0, 0, 0.04) 1.2px, transparent 1.2px) !important;
+          background-size: 20px 20px !important;
+          background-attachment: local;
+        }
+
+        /* --- Vite Card Theme Container Overrides --- */
+        .ai-theme-wrapper:not(.theme-dark) > div {
+          background: var(--ai-bg) !important;
+          border-color: var(--ai-border) !important;
+          box-shadow: var(--ai-card-shadow) !important;
+          backdrop-filter: none !important;
+        }
+        
+        .ai-theme-wrapper:not(.theme-dark) > div > div.absolute {
+          display: none !important;
+        }
+      `}</style>
+
+      <Card
+        accentColor={activeTheme === "dark" ? "purple" : "none"}
+        className="flex h-[620px] !p-0 overflow-hidden shadow-2xl transition-all duration-300"
+        noPad
+      >
+        <ChatHistorySidebar
+          chats={chats}
+          activeChatId={activeChatId}
+          onSelectChat={handleSelectChat}
+          onNewChat={handleNewChat}
+          onDeleteChat={handleDeleteChat}
+          onRenameChat={handleRenameChat}
+          activeTheme={activeTheme}
+          onChangeTheme={handleThemeChange}
+        />
+        
+        <ChatWindow
+          activeChat={activeChat}
+          onSendMessage={handleSendMessage}
+          loading={loading}
+          onClearChat={handleClearChat}
+        />
       </Card>
     </div>
   );
