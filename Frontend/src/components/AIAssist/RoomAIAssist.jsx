@@ -49,18 +49,14 @@ function CodeBlock({ code, language, onApply }) {
   );
 }
 
-export default function RoomAIAssist({ code, language, activeFileName, files, onApplyCode, selectedCode }) {
+export default function RoomAIAssist({ code, language, activeFileName, files, onApplyCode, selectedCode, roomTheme, onThemeChange }) {
   const { roomId } = useParams();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const bottomRef = useRef(null);
 
-  // Initialize theme from localStorage
-  const [activeTheme, setActiveTheme] = useState(() => {
-    const saved = localStorage.getItem("codefusionai_theme");
-    return saved === "light" || saved === "notebook" ? "light" : "dark";
-  });
+  const activeTheme = roomTheme || "dark";
 
   // Load room-specific chats from localStorage
   const [chats, setChats] = useState(() => {
@@ -398,8 +394,9 @@ Please respond clearly and provide code suggestions if relevant.`;
         <button
           onClick={() => {
             const nextTheme = activeTheme === "dark" ? "light" : "dark";
-            setActiveTheme(nextTheme);
-            localStorage.setItem("codefusionai_theme", nextTheme);
+            if (onThemeChange) {
+              onThemeChange(nextTheme);
+            }
           }}
           className="px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition duration-150 cursor-pointer border hover:opacity-85"
           style={{

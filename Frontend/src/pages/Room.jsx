@@ -427,10 +427,14 @@ export default function Room() {
     return saved === "light" || saved === "notebook" ? "light" : "dark";
   });
 
+  const handleRoomThemeChange = (newTheme) => {
+    setRoomTheme(newTheme);
+    localStorage.setItem("codefusionai_theme", newTheme);
+  };
+
   const toggleRoomTheme = () => {
     const nextTheme = roomTheme === "dark" ? "light" : "dark";
-    setRoomTheme(nextTheme);
-    localStorage.setItem("codefusionai_theme", nextTheme);
+    handleRoomThemeChange(nextTheme);
   };
   const [isRunning,       setIsRunning]       = useState(false);
   const [activePanel,     setActivePanel]     = useState("explorer"); // explorer | users | ai
@@ -1499,6 +1503,8 @@ export default function Room() {
                   files={files}
                   onApplyCode={handleApplyCodeSuggestion}
                   selectedCode={selectedCode}
+                  roomTheme={roomTheme}
+                  onThemeChange={handleRoomThemeChange}
                 />
               )}
 
