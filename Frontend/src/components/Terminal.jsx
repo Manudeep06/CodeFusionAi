@@ -28,9 +28,10 @@ const TerminalIcon = ({ className = "w-3.5 h-3.5" }) => (
   </svg>
 );
 
-function SingleTerminalInstance({ id, isActive }) {
+function SingleTerminalInstance({ id, isActive, theme }) {
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
+  const termInstanceRef = useRef(null);
   const isActiveRef = useRef(isActive);
 
   // Keep isActiveRef updated
@@ -38,20 +39,24 @@ function SingleTerminalInstance({ id, isActive }) {
     isActiveRef.current = isActive;
   }, [isActive]);
 
+  // Handle xterm instantiation
   useEffect(() => {
     if (!terminalRef.current) return;
 
+    const isLight = theme === "light";
     const term = new Terminal({
       cursorBlink: true,
       fontSize: 13,
       fontFamily: '"JetBrains Mono", Menlo, Monaco, Consolas, monospace',
       theme: {
-        background: "#0d1117",
-        foreground: "#c9d1d9",
-        cursor: "#58a6ff",
-        selectionBackground: "rgba(88, 166, 255, 0.3)",
+        background: isLight ? "#faf9f6" : "#0d1117",
+        foreground: isLight ? "#0f172a" : "#c9d1d9",
+        cursor: isLight ? "#4f46e5" : "#58a6ff",
+        selectionBackground: isLight ? "rgba(79, 70, 229, 0.25)" : "rgba(88, 166, 255, 0.3)",
       },
     });
+
+    termInstanceRef.current = term;
 
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
@@ -137,6 +142,19 @@ function SingleTerminalInstance({ id, isActive }) {
     };
   }, []);
 
+  // Update xterm colors dynamically when theme changes
+  useEffect(() => {
+    if (termInstanceRef.current) {
+      const isLight = theme === "light";
+      termInstanceRef.current.options.theme = {
+        background: isLight ? "#faf9f6" : "#0d1117",
+        foreground: isLight ? "#0f172a" : "#c9d1d9",
+        cursor: isLight ? "#4f46e5" : "#58a6ff",
+        selectionBackground: isLight ? "rgba(79, 70, 229, 0.25)" : "rgba(88, 166, 255, 0.3)",
+      };
+    }
+  }, [theme]);
+
   // Refit when tab becomes active
   useEffect(() => {
     if (isActive && fitAddonRef.current) {
@@ -159,7 +177,7 @@ function SingleTerminalInstance({ id, isActive }) {
   );
 }
 
-function TerminalComponent() {
+function TerminalComponent({ theme }) {
   const [terminalsList, setTerminalsList] = useState([
     { id: Date.now(), label: "powershell" }
   ]);
@@ -194,9 +212,9 @@ function TerminalComponent() {
   };
 
   return (
-    <div className="flex flex-col w-full h-full min-h-0 bg-[#0d1117]">
+    <div className="flex flex-col w-full h-full min-h-0" style={{ background: "var(--vs-bg)", color: "var(--vs-text)" }}>
       {/* Top Header */}
-      <div className="flex items-center justify-between px-4 h-9 bg-[#161b22] border-b border-[#30363d] select-none shrink-0">
+      <div className="flex items-center justify-between px-4 h-9 select-none shrink-0" style={{ background: "var(--vs-sidebarBg)", borderBottom: "1px solid var(--vs-border)" }}>
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Terminal</span>
         </div>
@@ -206,7 +224,8 @@ function TerminalComponent() {
           <button
             onClick={addTerminal}
             title="New Terminal"
-            className="p-1 rounded-md hover:bg-[#21262d] hover:text-slate-100 transition-colors cursor-pointer"
+            className="p-1 rounded hover:opacity-80 transition-colors cursor-pointer"
+            style={{ color: "var(--vs-textMuted)" }}
           >
             <PlusIcon />
           </button>
@@ -214,7 +233,8 @@ function TerminalComponent() {
             onClick={() => closeTerminal(activeId)}
             disabled={terminalsList.length <= 1}
             title="Delete Terminal"
-            className="p-1 rounded-md hover:bg-[#21262d] hover:text-slate-100 transition-colors cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
+            className="p-1 rounded hover:opacity-80 transition-colors cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
+            style={{ color: "var(--vs-textMuted)" }}
           >
             <TrashIcon />
           </button>
@@ -224,7 +244,7 @@ function TerminalComponent() {
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0 relative">
         {/* Left: Terminal bodies */}
-        <div className="flex-1 min-h-0 relative bg-[#0d1117] p-3">
+        <div className="flex-1 min-h-0 relative p-3" style={{ background: "var(--vs-bg)" }}>
           {terminalsList.length > 0 ? (
             terminalsList.map((term) => (
               <div
@@ -235,7 +255,7 @@ function TerminalComponent() {
                   pointerEvents: term.id === activeId ? "auto" : "none",
                 }}
               >
-                <SingleTerminalInstance id={term.id} isActive={term.id === activeId} />
+                <SingleTerminalInstance id={term.id} isActive={term.id === activeId} theme={theme} />
               </div>
             ))
           ) : (
@@ -245,7 +265,8 @@ function TerminalComponent() {
               <span className="text-xs font-semibold text-slate-400">No active terminals</span>
               <button
                 onClick={addTerminal}
-                className="px-3 py-1.5 rounded-md bg-[#21262d] text-slate-200 hover:bg-[#30363d] text-xs font-semibold cursor-pointer border border-[#30363d]"
+                className="px-3 py-1.5 rounded-md text-xs font-semibold cursor-pointer border"
+                style={{ background: "var(--vs-input)", color: "var(--vs-text)", borderColor: "var(--vs-border)" }}
               >
                 New Terminal
               </button>
@@ -255,20 +276,20 @@ function TerminalComponent() {
 
         {/* Right: Vertical terminal tabs list sidebar */}
         {terminalsList.length > 0 && (
-          <div className="w-[180px] shrink-0 border-l border-[#30363d] bg-[#161b22]/40 flex flex-col p-2 gap-1 overflow-y-auto no-scrollbar">
+          <div className="w-[180px] shrink-0 flex flex-col p-2 gap-1 overflow-y-auto no-scrollbar" style={{ borderLeft: "1px solid var(--vs-border)", background: "var(--vs-sidebarBg)" }}>
             {terminalsList.map((term) => (
               <div
                 key={term.id}
                 onClick={() => setActiveId(term.id)}
-                className={`group relative flex items-center justify-between pl-3 pr-2 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-all duration-150 ${
-                  activeId === term.id
-                    ? "bg-[#21262d]/65 text-[#58a6ff]"
-                    : "bg-transparent text-slate-400 hover:text-slate-200 hover:bg-[#21262d]/25"
-                }`}
+                className="group relative flex items-center justify-between pl-3 pr-2 py-1.5 rounded-md text-xs font-medium cursor-pointer transition-all duration-150"
+                style={{
+                  background: activeId === term.id ? "var(--vs-hover)" : "transparent",
+                  color: activeId === term.id ? "var(--vs-accent)" : "var(--vs-textMuted)",
+                }}
               >
-                {/* Active Indicator blue line on the left */}
+                {/* Active Indicator line on the left */}
                 {activeId === term.id && (
-                  <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-[#58a6ff] rounded-r" />
+                  <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r" style={{ background: "var(--vs-accent)" }} />
                 )}
 
                 <div className="flex items-center gap-2 truncate">
@@ -279,7 +300,7 @@ function TerminalComponent() {
                 {terminalsList.length > 1 && (
                   <button
                     onClick={(e) => closeTerminal(term.id, e)}
-                    className="p-0.5 rounded-md hover:bg-[#30363d] text-slate-400 hover:text-slate-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="p-0.5 rounded hover:opacity-80 text-slate-400 hover:text-slate-200 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <CloseIcon />
                   </button>

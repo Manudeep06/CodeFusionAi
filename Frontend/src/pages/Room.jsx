@@ -46,30 +46,30 @@ function getFileColor(filename) {
 
 /* ── Enhanced VS Code colour palette ── */
 const VS = {
-  bg:           "#0d1117",
-  sidebarBg:    "#161b22",
-  activityBg:   "#0d1117",
-  tabBarBg:     "#161b22",
-  tabActive:    "#0d1117",
-  tabInactive:  "#161b22",
-  tabBorder:    "#30363d",
-  statusBg:     "#1f2937",
-  input:        "#21262d",
-  border:       "#30363d",
-  highlight:    "#1d4ed840",
-  hover:        "#1c2128",
-  text:         "#e6edf3",
-  textMuted:    "#7d8590",
-  textDim:      "#484f58",
-  accent:       "#58a6ff",
-  accentPurple: "#a371f7",
-  green:        "#3fb950",
-  teal:         "#39d353",
-  yellow:       "#e3b341",
-  red:          "#f85149",
-  orange:       "#f0883e",
-  gradientA:    "#58a6ff",
-  gradientB:    "#a371f7",
+  bg:           "var(--vs-bg)",
+  sidebarBg:    "var(--vs-sidebarBg)",
+  activityBg:   "var(--vs-activityBg)",
+  tabBarBg:     "var(--vs-tabBarBg)",
+  tabActive:    "var(--vs-tabActive)",
+  tabInactive:  "var(--vs-tabInactive)",
+  tabBorder:    "var(--vs-tabBorder)",
+  statusBg:     "var(--vs-statusBg)",
+  input:        "var(--vs-input)",
+  border:       "var(--vs-border)",
+  highlight:    "var(--vs-highlight)",
+  hover:        "var(--vs-hover)",
+  text:         "var(--vs-text)",
+  textMuted:    "var(--vs-textMuted)",
+  textDim:      "var(--vs-textDim)",
+  accent:       "var(--vs-accent)",
+  accentPurple: "var(--vs-accentPurple)",
+  green:        "var(--vs-green)",
+  teal:         "var(--vs-teal)",
+  yellow:       "var(--vs-yellow)",
+  red:          "var(--vs-red)",
+  orange:       "var(--vs-orange)",
+  gradientA:    "var(--vs-gradientA)",
+  gradientB:    "var(--vs-gradientB)",
 };
 
 /* ═══════════════════════════════════════
@@ -106,16 +106,16 @@ function FolderIcon({ open = false, size = 14 }) {
 /* ═══════════════════════════════════════
    ACTIVITY BAR ICON
 ═══════════════════════════════════════ */
-function ActivityIcon({ title, active, onClick, children }) {
+function ActivityIcon({ title, active, onClick, accentColor = "#58a6ff", children }) {
   return (
     <button
       title={title}
       onClick={onClick}
       className="w-12 h-12 flex items-center justify-center relative group transition-all duration-150"
       style={{
-        color: active ? "#e6edf3" : "#484f58",
-        borderLeft: active ? "2px solid #58a6ff" : "2px solid transparent",
-        background: active ? "#1c2128" : "transparent",
+        color: active ? VS.text : VS.textDim,
+        borderLeft: active ? `2px solid ${accentColor}` : "2px solid transparent",
+        background: active ? VS.hover : "transparent",
       }}
       onMouseEnter={(e) => {
         if (!active) e.currentTarget.style.color = "#7d8590";
@@ -421,6 +421,17 @@ export default function Room() {
   const [expandedFolders, setExpandedFolders] = useState({});
   const [language,        setLanguage]        = useState("javascript");
   const [users,           setUsers]           = useState([]);
+  const [selectedCode,    setSelectedCode]    = useState("");
+  const [roomTheme,       setRoomTheme]       = useState(() => {
+    const saved = localStorage.getItem("codefusionai_theme");
+    return saved === "light" || saved === "notebook" ? "light" : "dark";
+  });
+
+  const toggleRoomTheme = () => {
+    const nextTheme = roomTheme === "dark" ? "light" : "dark";
+    setRoomTheme(nextTheme);
+    localStorage.setItem("codefusionai_theme", nextTheme);
+  };
   const [isRunning,       setIsRunning]       = useState(false);
   const [activePanel,     setActivePanel]     = useState("explorer"); // explorer | users | ai
 
@@ -813,12 +824,42 @@ export default function Room() {
     emitFiles(files.map((f) => (f.path === activeFile ? { ...f, content: value } : f)));
   };
 
+  const handleApplyCodeSuggestion = (newContent) => {
+    if (!editorRef.current || !activeFile) return;
+    const editor = editorRef.current;
+    const monacoInstance = window.monaco;
+    if (!monacoInstance) {
+      handleCodeChange(newContent);
+      return;
+    }
+    const model = editor.getModel();
+    const range = model
+      ? model.getFullModelRange()
+      : new monacoInstance.Range(1, 1, 1, 1);
+    const id = { major: 1, minor: 1 };
+    const textOp = {
+      identifier: id,
+      range: range,
+      text: newContent,
+      forceMoveMarkers: true,
+    };
+    editor.executeEdits("ai-assist", [textOp]);
+    editor.focus();
+  };
+
   const handleEditorMount = (editor, monaco) => {
     editorRef.current = editor;
     window.monaco = monaco;
     editor.onDidChangeCursorPosition((e) => {
       if (socket && socket.connected) {
         socket.emit("cursor-change", { roomId, position: e.position });
+      }
+    });
+    editor.onDidChangeCursorSelection((e) => {
+      const model = editor.getModel();
+      if (model) {
+        const text = model.getValueInRange(e.selection);
+        setSelectedCode(text);
       }
     });
   };
@@ -1111,9 +1152,69 @@ export default function Room() {
         .remote-cursor-amber { border-left: 2px solid #fbbf24 !important; position: absolute; z-index: 10; margin-left: -1px; }
         .remote-cursor-pink { border-left: 2px solid #ec4899 !important; position: absolute; z-index: 10; margin-left: -1px; }
         .remote-cursor-blue { border-left: 2px solid #3b82f6 !important; position: absolute; z-index: 10; margin-left: -1px; }
+
+        .theme-dark {
+          --vs-bg: #0d1117;
+          --vs-sidebarBg: #161b22;
+          --vs-activityBg: #0d1117;
+          --vs-tabBarBg: #161b22;
+          --vs-tabActive: #0d1117;
+          --vs-tabInactive: #161b22;
+          --vs-tabBorder: #30363d;
+          --vs-statusBg: #1f2937;
+          --vs-input: #21262d;
+          --vs-border: #30363d;
+          --vs-highlight: #1d4ed840;
+          --vs-hover: #1c2128;
+          --vs-text: #e6edf3;
+          --vs-textMuted: #7d8590;
+          --vs-textDim: #484f58;
+          --vs-accent: #58a6ff;
+          --vs-accentPurple: #a371f7;
+          --vs-green: #3fb950;
+          --vs-teal: #39d353;
+          --vs-yellow: #e3b341;
+          --vs-red: #f85149;
+          --vs-orange: #f0883e;
+          --vs-gradientA: #58a6ff;
+          --vs-gradientB: #a371f7;
+        }
+
+        .theme-light {
+          --vs-bg: #faf9f6;
+          --vs-sidebarBg: #f4f3ee;
+          --vs-activityBg: #faf9f6;
+          --vs-tabBarBg: #f4f3ee;
+          --vs-tabActive: #faf9f6;
+          --vs-tabInactive: #f4f3ee;
+          --vs-tabBorder: rgba(0, 0, 0, 0.08);
+          --vs-statusBg: #e2e8f0;
+          --vs-input: #ffffff;
+          --vs-border: rgba(0, 0, 0, 0.08);
+          --vs-highlight: rgba(99, 102, 241, 0.15);
+          --vs-hover: rgba(0, 0, 0, 0.03);
+          --vs-text: #0f172a;
+          --vs-textMuted: #475569;
+          --vs-textDim: #94a3b8;
+          --vs-accent: #4f46e5;
+          --vs-accentPurple: #818cf8;
+          --vs-green: #10b981;
+          --vs-teal: #0d9488;
+          --vs-yellow: #f59e0b;
+          --vs-red: #ef4444;
+          --vs-orange: #f97316;
+          --vs-gradientA: #6366f1;
+          --vs-gradientB: #818cf8;
+        }
+
+        /* Monaco overrides for light theme */
+        .theme-light .monaco-editor, 
+        .theme-light .monaco-editor .margin {
+          background-color: #faf9f6 !important;
+        }
       `}</style>
       <div
-        className="h-screen flex flex-col overflow-hidden"
+        className={`h-screen flex flex-col overflow-hidden theme-${roomTheme}`}
         style={{ background: VS.bg, color: VS.text, fontFamily: "'Segoe UI', system-ui, sans-serif", fontSize: "13px" }}
       >
 
@@ -1121,8 +1222,8 @@ export default function Room() {
         <div
           className="h-9 flex items-center justify-between px-4 select-none shrink-0"
           style={{
-            background: "#21262d",
-            borderBottom: "1px solid #21262d",
+            background: VS.input,
+            borderBottom: `1px solid ${VS.border}`,
           }}
         >
           {/* Left – Brand */}
@@ -1168,7 +1269,7 @@ export default function Room() {
           {/* ━━ ACTIVITY BAR ━━ */}
           <div
             className="w-12 shrink-0 flex flex-col items-center pt-1"
-            style={{ background: "#0d1117", borderRight: "1px solid #21262d" }}
+            style={{ background: VS.activityBg, borderRight: `1px solid ${VS.border}` }}
           >
             {/* Explorer */}
             <ActivityIcon
@@ -1219,24 +1320,34 @@ export default function Room() {
             <ActivityIcon
               title="AI Assistant"
               active={activePanel === "ai"}
+              accentColor="#a371f7"
               onClick={() => setActivePanel(activePanel === "ai" ? null : "ai")}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M12 2a5 5 0 0 1 5 5c0 2-1 3.5-2.5 4.5L16 21H8l1.5-9.5C8 10.5 7 9 7 7a5 5 0 0 1 5-5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-                <path d="M9 21h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-                <circle cx="12" cy="7" r="1.5" fill="currentColor" opacity="0.6" />
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3a1 1 0 0 0-1 1v4.5A1.5 1.5 0 0 1 9.5 10H5a1 1 0 0 0 0 2h4.5a1.5 1.5 0 0 1 1.5 1.5V18a1 1 0 0 0 2 0v-4.5a1.5 1.5 0 0 1 1.5-1.5H20a1 1 0 0 0 0-2h-4.5A1.5 1.5 0 0 1 14 8.5V4a1 1 0 0 0-1-1z" fill="currentColor" fillOpacity="0.1" />
+                <path d="M18 16a0.5 0.5 0 0 0-.5.5V18a0.5 0.5 0 0 1-.5.5h-1.5a0.5 0.5 0 0 0 0 1H17a0.5 0.5 0 0 1 .5.5v1.5a0.5 0.5 0 0 0 1 0V21a0.5 0.5 0 0 1 .5-.5h1.5a0.5 0.5 0 0 0 0-1H20a0.5 0.5 0 0 1-.5-.5v-1.5a0.5 0.5 0 0 0-.5-.5z" fill="currentColor" fillOpacity="0.25" />
               </svg>
             </ActivityIcon>
 
             {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Settings */}
-            <ActivityIcon title="Settings" active={false} onClick={() => {}}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
+            {/* Theme Toggle (Light/Dark Mode) */}
+            <ActivityIcon 
+              title={roomTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"} 
+              active={false} 
+              onClick={toggleRoomTheme}
+            >
+              {roomTheme === "dark" ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+                </svg>
+              )}
             </ActivityIcon>
 
             {/* Leave Room */}
@@ -1261,12 +1372,12 @@ export default function Room() {
             <>
               <div
                 className="shrink-0 flex flex-col overflow-hidden"
-                style={{ width: `${sidebarWidth}px`, background: "#161b22", borderRight: "1px solid #21262d" }}
+                style={{ width: `${sidebarWidth}px`, background: VS.sidebarBg, borderRight: `1px solid ${VS.border}` }}
               >
               {/* Panel title */}
               <div
                 className="h-8 flex items-center justify-between px-3 shrink-0"
-                style={{ borderBottom: "1px solid #21262d" }}
+                style={{ borderBottom: `1px solid ${VS.border}` }}
               >
                 <span
                   className="text-[10px] font-bold tracking-widest uppercase"
@@ -1358,7 +1469,7 @@ export default function Room() {
                       <div
                         key={i}
                         className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg"
-                        style={{ background: "#1c2128", border: "1px solid #21262d" }}
+                        style={{ background: VS.hover, border: `1px solid ${VS.border}` }}
                       >
                         <div
                           className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
@@ -1386,6 +1497,8 @@ export default function Room() {
                   language={language}
                   activeFileName={activeFile}
                   files={files}
+                  onApplyCode={handleApplyCodeSuggestion}
+                  selectedCode={selectedCode}
                 />
               )}
 
@@ -1415,18 +1528,18 @@ export default function Room() {
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
 
             {openTabs.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center select-none" style={{ background: "#0d1117" }}>
-                <div className="w-20 h-20 mb-6 rounded-2xl flex items-center justify-center text-4xl" style={{ background: "#21262d", border: "1px solid #58a6ff30", boxShadow: "0 0 40px #a371f720", animation: "pulse 3s infinite alternate" }}>
+              <div className="flex-1 flex flex-col items-center justify-center select-none" style={{ background: VS.bg }}>
+                <div className="w-20 h-20 mb-6 rounded-2xl flex items-center justify-center text-4xl" style={{ background: VS.input, border: `1px solid ${VS.border}`, boxShadow: "0 0 40px var(--vs-highlight)", animation: "pulse 3s infinite alternate" }}>
                   ⚡
                 </div>
-                <h2 className="text-xl font-bold mb-2 tracking-tight" style={{ color: "#e6edf3" }}>CodeFusionAI Workspace</h2>
-                <p className="text-[13px] mb-8" style={{ color: "#7d8590" }}>Select a file from the explorer or create a new one to begin.</p>
+                <h2 className="text-xl font-bold mb-2 tracking-tight" style={{ color: VS.text }}>CodeFusionAI Workspace</h2>
+                <p className="text-[13px] mb-8" style={{ color: VS.textMuted }}>Select a file from the explorer or create a new one to begin.</p>
                 
                 <div className="flex gap-4">
                   <button onClick={() => setNewItemModal({ parentPath: "", isFolder: false })} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-200 hover:scale-105" style={{ background: "#1f6feb", color: "#fff", boxShadow: "0 8px 24px #1f6feb40" }}>
                     Create File
                   </button>
-                  <button onClick={() => fileInputRef.current?.click()} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-200 hover:scale-105" style={{ background: "#21262d", color: "#e6edf3", border: "1px solid #30363d" }} onMouseEnter={(e) => e.currentTarget.style.borderColor="#58a6ff"} onMouseLeave={(e) => e.currentTarget.style.borderColor="#30363d"}>
+                  <button onClick={() => fileInputRef.current?.click()} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-200 hover:scale-105" style={{ background: VS.input, color: VS.text, border: `1px solid ${VS.border}` }} onMouseEnter={(e) => e.currentTarget.style.borderColor=VS.accent} onMouseLeave={(e) => e.currentTarget.style.borderColor=VS.border}>
                     Upload Project
                   </button>
                 </div>
@@ -1436,21 +1549,21 @@ export default function Room() {
                 {/* ── TOOLBAR ── */}
                 <div
                   className="h-9 shrink-0 flex items-center justify-between px-3 gap-3"
-                  style={{ background: "#161b22", borderBottom: "1px solid #21262d" }}
+                  style={{ background: VS.sidebarBg, borderBottom: `1px solid ${VS.border}` }}
                 >
                   <div className="flex items-center gap-2">
                     <div
                       className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-all duration-150"
-                      style={{ color: "#7d8590", border: "1px solid #30363d", background: "#0d1117" }}
-                      onMouseEnter={(e) => e.currentTarget.style.borderColor = "#484f58"}
-                      onMouseLeave={(e) => e.currentTarget.style.borderColor = "#30363d"}
+                      style={{ color: VS.textMuted, border: `1px solid ${VS.border}`, background: VS.bg }}
+                      onMouseEnter={(e) => e.currentTarget.style.borderColor = VS.textDim}
+                      onMouseLeave={(e) => e.currentTarget.style.borderColor = VS.border}
                     >
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
                         <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                       </svg>
                       <span
                         className="bg-transparent outline-none text-[12px] font-medium"
-                        style={{ color: "#e6edf3", cursor: "default" }}
+                        style={{ color: VS.text, cursor: "default" }}
                       >
                         {LANGUAGES.find(l => l.id === language)?.label || "Text"}
                       </span>
@@ -1504,7 +1617,7 @@ export default function Room() {
                 {/* ── TAB BAR ── */}
                 <div
                   className="flex items-end overflow-x-auto shrink-0"
-                  style={{ background: "#0d1117", borderBottom: "1px solid #21262d", scrollbarWidth: "none", minHeight: "35px" }}
+                  style={{ background: VS.bg, borderBottom: `1px solid ${VS.border}`, scrollbarWidth: "none", minHeight: "35px" }}
                 >
                   {openTabs.map((tab) => {
                     const isActive = tab === activeFile;
@@ -1516,10 +1629,10 @@ export default function Room() {
                         className="flex items-center gap-2 px-3.5 shrink-0 cursor-pointer group transition-colors duration-100"
                         style={{
                           height: "35px",
-                          background: isActive ? "#161b22" : "transparent",
-                          borderRight: "1px solid #21262d",
+                          background: isActive ? VS.sidebarBg : "transparent",
+                          borderRight: `1px solid ${VS.border}`,
                           borderTop: isActive ? `1px solid ${fileColor}` : "1px solid transparent",
-                          color: isActive ? "#e6edf3" : "#484f58",
+                          color: isActive ? VS.text : VS.textDim,
                           minWidth: "110px",
                           maxWidth: "190px",
                         }}
@@ -1546,7 +1659,7 @@ export default function Room() {
                   <Editor
                     height="100%"
                     language={language}
-                    theme="vs-dark"
+                    theme={roomTheme === "light" ? "vs" : "vs-dark"}
                     value={code}
                     onChange={handleCodeChange}
                     onMount={handleEditorMount}
@@ -1578,12 +1691,12 @@ export default function Room() {
               className="shrink-0 flex items-center justify-center"
               style={{
                 height: "5px",
-                background: "#21262d",
+                background: VS.border,
                 cursor: "ns-resize",
                 position: "relative",
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = "#58a6ff"}
-              onMouseLeave={(e) => e.currentTarget.style.background = "#21262d"}
+              onMouseEnter={(e) => e.currentTarget.style.background = VS.accent}
+              onMouseLeave={(e) => e.currentTarget.style.background = VS.border}
               title="Drag to resize terminal"
             >
               <div style={{ width: "40px", height: "2px", borderRadius: "1px", background: "inherit", opacity: 0.4 }} />
@@ -1598,7 +1711,7 @@ export default function Room() {
 
               {/* Output */}
               <div className="flex-1 overflow-hidden min-h-0">
-                <TerminalComponent />
+                <TerminalComponent theme={roomTheme} />
               </div>
             </div>
           </div>
@@ -1623,12 +1736,12 @@ export default function Room() {
                 <div style={{ width: "2px", height: "40px", borderRadius: "1px", background: "inherit", opacity: 0.4 }} />
               </div>
 
-              <div className="shrink-0 flex flex-col" style={{ width: `${previewWidth}px`, background: "#0d1117" }}>
-                <div className="h-[35px] shrink-0 flex items-center px-3 gap-3" style={{ borderBottom: "1px solid #21262d", background: "#161b22" }}>
-                  <span className="text-[11px] font-bold text-[#e6edf3]">Live Preview</span>
+              <div className="shrink-0 flex flex-col" style={{ width: `${previewWidth}px`, background: VS.bg }}>
+                <div className="h-[35px] shrink-0 flex items-center px-3 gap-3" style={{ borderBottom: `1px solid ${VS.border}`, background: VS.sidebarBg }}>
+                  <span className="text-[11px] font-bold" style={{ color: VS.text }}>Live Preview</span>
                   
                   <div className="ml-auto flex items-center gap-2">
-                    <button onClick={() => setIsPreviewOpen(false)} title="Close preview" className="flex items-center text-[#8b949e] hover:text-[#f85149] transition-colors p-1.5 bg-[#21262d] rounded hover:bg-[#30363d]">
+                    <button onClick={() => setIsPreviewOpen(false)} title="Close preview" className="flex items-center transition-colors p-1.5 rounded border hover:opacity-80" style={{ color: VS.textMuted, background: VS.input, borderColor: VS.border }}>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                   </div>
@@ -1637,7 +1750,7 @@ export default function Room() {
                   {previewUrl ? (
                     <iframe src={previewUrl} className="w-full h-full border-none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Live Preview" />
                   ) : (
-                    <div className="flex items-center justify-center h-full text-slate-500 text-xs font-medium bg-[#0d1117]">
+                    <div className="flex items-center justify-center h-full text-slate-500 text-xs font-medium" style={{ background: VS.bg }}>
                       <div className="flex flex-col items-center gap-3">
                         <svg className="w-6 h-6 text-slate-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         Waiting for dev server...
@@ -1654,9 +1767,9 @@ export default function Room() {
         <div
           className="h-6 shrink-0 flex items-center justify-between px-3 select-none"
           style={{
-            background: "#21262d",
-            borderTop: "1px solid #21262d",
-            color: "#7d8590",
+            background: VS.input,
+            borderTop: `1px solid ${VS.border}`,
+            color: VS.textMuted,
             fontSize: "11px",
           }}
         >
