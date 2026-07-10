@@ -27,6 +27,8 @@ function Dashboard() {
   const [isJoining, setIsJoining] = useState(false);
   const [template, setTemplate] = useState("react");
   const [activeTab, setActiveTab] = useState("Dashboard");
+  const [accessType, setAccessType] = useState("private"); // "private" or "public"
+  const [description, setDescription] = useState("");
 
  useEffect(() => {
    socket.connect();
@@ -75,6 +77,24 @@ function Dashboard() {
 
   const handleCreateRoom = async () => {
     if (!roomName.trim()) return;
+
+    try {
+      const baseUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+      const response = await fetch(`${baseUrl}/api/rooms/user/${user?.uid}`);
+      if (response.ok) {
+        const existingRooms = await response.json();
+        const nameExists = existingRooms.some(
+          (r) => r.name.toLowerCase() === roomName.trim().toLowerCase() && r.ownerId === user?.uid
+        );
+        if (nameExists) {
+          alert("A room with this name already exists in your account. Please use a unique room name.");
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Error verifying room name uniqueness:", err);
+    }
+
     const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
 
     const seg = (n) =>
@@ -108,7 +128,9 @@ function Dashboard() {
       username: user?.displayName || user?.email?.split("@")[0] || "Developer",
       photoURL: user?.photoURL || "",
       template: template,
-      files: JSON.stringify(templateFiles)
+      files: JSON.stringify(templateFiles),
+      accessType: accessType,
+      description: description
     });
 
     navigate(`/room/${newRoomId}`);
@@ -384,6 +406,47 @@ function Dashboard() {
                         </div>
                       ))}
                     </div>
+                    <div className="flex flex-col gap-2 mt-4">
+                      <label className="text-[11px] font-bold text-slate-400">Room Visibility</label>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setAccessType("private")}
+                          className={`flex-1 py-2 px-4 rounded-xl border text-xs font-bold transition duration-200 cursor-pointer ${
+                            accessType === "private"
+                              ? "bg-purple-600/15 border-purple-500/50 text-purple-300"
+                              : "border-white/[0.08] bg-white/[0.02] text-slate-400 hover:bg-white/[0.04]"
+                          }`}
+                        >
+                          Private
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAccessType("public")}
+                          className={`flex-1 py-2 px-4 rounded-xl border text-xs font-bold transition duration-200 cursor-pointer ${
+                            accessType === "public"
+                              ? "bg-purple-600/15 border-purple-500/50 text-purple-300"
+                              : "border-white/[0.08] bg-white/[0.02] text-slate-400 hover:bg-white/[0.04]"
+                          }`}
+                        >
+                          Public
+                        </button>
+                      </div>
+                    </div>
+
+                    {accessType === "public" && (
+                      <div className="flex flex-col gap-2 mt-4 animate-fade-in">
+                        <label className="text-[11px] font-bold text-slate-400">Room Description</label>
+                        <textarea
+                          placeholder="Provide a description of the project or room for other collaborators..."
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          rows={2}
+                          className="w-full bg-white/[0.03] border border-white/[0.08] rounded-xl px-4 py-3 text-slate-200 placeholder-slate-700 text-xs font-medium focus:outline-none focus:border-purple-500/60 focus:bg-purple-950/10 focus:ring-2 focus:ring-purple-500/15 transition duration-200 resize-none"
+                        />
+                      </div>
+                    )}
+
                     <p className="mt-4 text-[10px] text-slate-500">
                       Files will be saved in your browser's IndexedDB.
                     </p>
@@ -580,17 +643,21 @@ function Dashboard() {
         )}
 
         {activeTab === "Sessions" && (
-          <SessionsTab handleJoinRoomShortcut={(id) => {
-            setJoinId(id);
-            setActiveTab("Dashboard");
-            setTimeout(() => {
-              const input = document.getElementById("join-room-input");
-              if (input) {
-                input.focus();
-                input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }
-            }, 100);
-          }} />
+          <SessionsTab 
+            handleJoinRoomShortcut={(id) => {
+              navigate(`/room/${id}`);
+            }}
+            onCreateRoomClick={() => {
+              setActiveTab("Dashboard");
+              setTimeout(() => {
+                const input = document.getElementById("roomNameInput");
+                if (input) {
+                  input.focus();
+                  input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }, 100);
+            }}
+          />
         )}
 
         {activeTab === "AI Assist" && (

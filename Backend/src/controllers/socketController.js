@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { getOrCreateRoom, updateRoomFiles } from "../services/roomService.js";
+import Room from "../models/Room.js";
+import { getOrCreateRoom, updateRoomFiles, addParticipant } from "../services/roomService.js";
 
 const INITIAL_WORKSPACE = JSON.stringify([]);
 
@@ -43,6 +44,8 @@ export const registerSocketHandlers = (io) => {
       let ownerId = "";
       let template = "react";
       let files = null;
+      let accessType = "private";
+      let description = "";
 
       if (typeof data === "object" && data !== null) {
         roomId = data.roomId;
@@ -52,6 +55,8 @@ export const registerSocketHandlers = (io) => {
         ownerId = data.ownerId || "";
         template = data.template || "react";
         files = data.files || null;
+        accessType = data.accessType || "private";
+        description = data.description || "";
       } else {
         roomId = data;
       }
@@ -85,8 +90,11 @@ export const registerSocketHandlers = (io) => {
           roomId,
           roomName,
           ownerId,
+          ownerName: username,
           template,
-          files
+          files,
+          accessType,
+          description
         });
       } catch (err) {
         console.error("MongoDB create room error:", err);
@@ -101,39 +109,52 @@ export const registerSocketHandlers = (io) => {
       let roomId = "";
       let username = "Developer";
       let photoURL = "";
+      let userId = "";
 
       if (typeof data === "object" && data !== null) {
         roomId = data.roomId;
         username = data.username || "Developer";
         photoURL = data.photoURL || "";
+        userId = data.userId || "";
       } else {
         roomId = data;
       }
 
-      socket.join(roomId);
-      socket.username = username;
-      socket.photoURL = photoURL;
-      socket.roomId = roomId;
-
-      console.log(`${username} (${socket.id}) joined room ${roomId}`);
-
       try {
-        const room = await getOrCreateRoom({ roomId });
+        const room = await Room.findOne({ roomId });
+        if (!room) {
+          return socket.emit("join-error", "Room not found");
+        }
+
+        // Restriction check: closed room
+        if (room.status === "closed") {
+          return socket.emit("join-error", "Access Denied: This session has been closed. Please reopen it from the dashboard before joining.");
+        }
+
+        // Register participant in the DB
+        await addParticipant(roomId, userId);
+
+        socket.join(roomId);
+        socket.username = username;
+        socket.photoURL = photoURL;
+        socket.roomId = roomId;
+
+        console.log(`${username} (${socket.id}) joined room ${roomId}`);
         socket.emit("receive-code", room.files);
+        
+        await broadcastRoomUsers(io, roomId);
+
+        socket.to(roomId).emit("user-joined", {
+          userId: socket.id,
+          username,
+          photoURL,
+        });
+
+        socket.emit("room-joined", roomId);
       } catch (err) {
         console.error("MongoDB join room error:", err);
-        socket.emit("receive-code", INITIAL_WORKSPACE);
+        socket.emit("join-error", "An error occurred while joining the room.");
       }
-
-      await broadcastRoomUsers(io, roomId);
-
-      socket.to(roomId).emit("user-joined", {
-        userId: socket.id,
-        username,
-        photoURL,
-      });
-
-      socket.emit("room-joined", roomId);
     });
 
     // Real-Time Code Synchronization Event
@@ -199,6 +220,22 @@ export const registerSocketHandlers = (io) => {
             }
           }
         }
+      }
+    });
+
+    // Close Room Event
+    socket.on("close-room", async ({ roomId, userId }) => {
+      try {
+        const room = await Room.findOne({ roomId });
+        if (!room) return socket.emit("room-error", "Room not found");
+        if (room.ownerId !== userId) {
+          return socket.emit("room-error", "Unauthorized: Only the owner can close the room.");
+        }
+        room.status = "closed";
+        await room.save();
+        io.to(roomId).emit("room-closed", { roomId, message: "This room has been closed by the owner." });
+      } catch (err) {
+        console.error("Socket close room error:", err);
       }
     });
 

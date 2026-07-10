@@ -8,6 +8,8 @@ import executeCodeRoute from "./routes/executeCode.js";
 import { connectDB } from "./config/db.js";
 import { registerSocketHandlers } from "./controllers/socketController.js";
 import aiRoutes from "./routes/aiRoutes.js";
+import roomRoutes from "./routes/roomRoutes.js";
+
 
 dotenv.config();
 
@@ -41,6 +43,7 @@ registerSocketHandlers(io);
 // Register API Routes
 app.use("/api/filesystem", fileSystemRoute);
 app.use("/api/execute", executeCodeRoute);
+app.use("/api/rooms", roomRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend Running");

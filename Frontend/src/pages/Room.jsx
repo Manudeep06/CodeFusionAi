@@ -217,7 +217,7 @@ export default function Room() {
     if (!socket.connected) socket.connect();
 
     const handleConnect = () => {
-      socket.emit("join-room", { roomId, username, photoURL });
+      socket.emit("join-room", { roomId, username, photoURL, userId: user?.uid });
     };
 
     if (socket.connected) {
@@ -228,6 +228,16 @@ export default function Room() {
 
     socket.on("room-joined", () => {
       console.log("Room joined successfully:", roomId);
+    });
+
+    socket.on("join-error", (errorMessage) => {
+      alert(errorMessage || "Failed to join room.");
+      navigate("/dashboard");
+    });
+
+    socket.on("room-closed", (data) => {
+      alert(data.message || "This room has been closed by the owner.");
+      navigate("/dashboard");
     });
 
     socket.on("receive-code", (incomingCode) => {
@@ -389,11 +399,13 @@ export default function Room() {
     return () => {
       socket.off("connect", handleConnect);
       socket.off("room-joined");
+      socket.off("join-error");
+      socket.off("room-closed");
       socket.off("receive-code");
       socket.off("room-users");
       socket.off("cursor-update");
     };
-  }, [roomId, username, photoURL]);
+  }, [roomId, username, photoURL, user?.uid, navigate]);
 
   /* ── Sync Files to WebContainer (Debounced) ── */
   useEffect(() => {
