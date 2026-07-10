@@ -204,7 +204,7 @@ export const registerSocketHandlers = (io) => {
 
     // Disconnect Event
     socket.on("disconnect", () => {
-      console.log("User Disconnected:", socket.id);
+      console.log("User Disconnected");
     });
   });
 };

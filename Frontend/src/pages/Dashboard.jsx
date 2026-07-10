@@ -32,7 +32,7 @@ function Dashboard() {
    socket.connect();
 
    const handleConnect = () => {
-     console.log("Connected:", socket.id);
+     console.log("Connected");
    };
 
    const handleWelcome = (message) => {
