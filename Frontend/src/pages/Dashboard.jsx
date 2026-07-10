@@ -1,309 +1,22 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { logout } from "../firebase/firebase";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { logout } from "../firebase/firebase";
 import { useAuth } from "../context/AuthContext";
 import { socket } from "../services/socket";
+
 import DocsTab from "../components/Docs/DocsTab";
 import SessionsTab from "../components/Sessions/SessionsTab";
 import AIAssistTab from "../components/AIAssist/AIAssistTab";
 
-/* ─── Profile Image Component with COEP/CORS & Error Fallback ─────────────── */
-function ProfileImage({ src, fallback, alt, className }) {
-  const [imgFailed, setImgFailed] = useState(false);
+import ProfileImage from "../components/Dashboard/ProfileImage";
+import InteractiveBg from "../components/Dashboard/InteractiveBg";
+import Card from "../components/Dashboard/Card";
+import StatCard from "../components/Dashboard/StatCard";
+import CodePreview from "../components/Dashboard/CodePreview";
 
-  if (src && !imgFailed) {
-    return (
-      <img
-        src={src}
-        alt={alt || ""}
-        crossOrigin="anonymous"
-        referrerPolicy="no-referrer"
-        onError={() => setImgFailed(true)}
-        className={className}
-      />
-    );
-  }
+// Export Card component for backwards compatibility with tabs
+export { Card };
 
-  return (
-    <div className={`bg-gradient-to-tr from-purple-600 via-violet-600 to-blue-500 flex items-center justify-center font-black text-white select-none ${className}`}>
-      {fallback}
-    </div>
-  );
-}
-
-/* ─── Interactive Parallax Background ─────────────────────────────────────── */
-function InteractiveBg() {
-  const spotRef = useRef(null);
-  const orbRef1 = useRef(null);
-  const orbRef2 = useRef(null);
-  const orbRef3 = useRef(null);
-
-  const handleMouseMove = useCallback((e) => {
-    const { clientX: x, clientY: y } = e;
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    const px = (x / w - 0.5) * 2;   // -1 to 1
-    const py = (y / h - 0.5) * 2;
-
-    if (spotRef.current) {
-      spotRef.current.style.background = `radial-gradient(600px circle at ${x}px ${y}px, rgba(120,60,255,0.10), transparent 70%)`;
-    }
-    if (orbRef1.current) {
-      orbRef1.current.style.transform = `translate(${px * 30}px, ${py * 20}px)`;
-    }
-    if (orbRef2.current) {
-      orbRef2.current.style.transform = `translate(${px * -20}px, ${py * -15}px)`;
-    }
-    if (orbRef3.current) {
-      orbRef3.current.style.transform = `translate(${px * 15}px, ${py * 25}px)`;
-    }
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener("mousemove", handleMouseMove, { passive: true });
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, [handleMouseMove]);
-
-  return (
-    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-      {/* Fine dot grid */}
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage: "radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px)",
-          backgroundSize: "28px 28px",
-        }}
-      />
-      {/* Coarse accent grid */}
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(139,92,246,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(139,92,246,0.03) 1px, transparent 1px)",
-          backgroundSize: "112px 112px",
-        }}
-      />
-
-      {/* Top aurora bloom */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 110% 60% at 50% -8%, rgba(109,40,217,0.24) 0%, rgba(79,70,229,0.10) 45%, transparent 70%)",
-        }}
-      />
-      {/* Bottom horizon */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(ellipse 75% 28% at 50% 108%, rgba(37,99,235,0.16) 0%, transparent 70%)",
-        }}
-      />
-
-      {/* Parallax Orb 1 — main purple */}
-      <div
-        ref={orbRef1}
-        className="animate-orb absolute rounded-full blur-[140px] transition-transform duration-[1200ms] ease-out"
-        style={{
-          width: 680, height: 680,
-          top: "-18%", left: "5%",
-          background: "radial-gradient(circle, rgba(124,58,237,0.42) 0%, rgba(79,70,229,0.22) 50%, transparent 80%)",
-        }}
-      />
-      {/* Parallax Orb 2 — deep blue */}
-      <div
-        ref={orbRef2}
-        className="animate-orb-slow absolute rounded-full blur-[160px] transition-transform duration-[1400ms] ease-out"
-        style={{
-          width: 560, height: 560,
-          bottom: "-8%", right: "2%",
-          background: "radial-gradient(circle, rgba(37,99,235,0.32) 0%, rgba(8,145,178,0.18) 50%, transparent 80%)",
-        }}
-      />
-      {/* Parallax Orb 3 — pink/violet */}
-      <div
-        ref={orbRef3}
-        className="animate-orb-med absolute rounded-full blur-[120px] transition-transform duration-[1000ms] ease-out"
-        style={{
-          width: 400, height: 400,
-          top: "32%", left: "50%",
-          background: "radial-gradient(circle, rgba(219,39,119,0.28) 0%, rgba(147,51,234,0.18) 55%, transparent 80%)",
-        }}
-      />
-      {/* Orb 4 — teal accent */}
-      <div
-        className="animate-orb absolute rounded-full blur-[90px]"
-        style={{
-          width: 240, height: 240,
-          top: "58%", left: "12%",
-          background: "radial-gradient(circle, rgba(20,184,166,0.22) 0%, transparent 75%)",
-          animationDelay: "-9s",
-        }}
-      />
-      {/* Orb 5 — indigo mid */}
-      <div
-        className="animate-orb-slow absolute rounded-full blur-[100px]"
-        style={{
-          width: 300, height: 300,
-          top: "18%", right: "18%",
-          background: "radial-gradient(circle, rgba(99,102,241,0.26) 0%, transparent 75%)",
-          animationDelay: "-5s",
-        }}
-      />
-
-      {/* Mouse spotlight */}
-      <div ref={spotRef} className="absolute inset-0 transition-[background] duration-200" />
-
-      {/* Edge vignette */}
-      <div
-        className="absolute inset-0"
-        style={{
-          background: "radial-gradient(ellipse 100% 100% at 50% 50%, transparent 45%, rgba(3,8,18,0.75) 100%)",
-        }}
-      />
-    </div>
-  );
-}
-
-/* ─── Card ─────────────────────────────────────────────────────────────────── */
-export function Card({ children, className = "", delay = 0, accentColor = "purple", noPad = false }) {
-  const glows = {
-    purple: "hover:border-purple-500/35 hover:shadow-[0_0_70px_-10px_rgba(168,85,247,0.45)]",
-    blue:   "hover:border-blue-500/35   hover:shadow-[0_0_70px_-10px_rgba(59,130,246,0.45)]",
-    none:   "hover:border-white/[0.12]",
-  };
-  const topEdge = {
-    purple: "via-purple-400/60",
-    blue:   "via-blue-400/60",
-    none:   "via-white/12",
-  };
-  const cornerGlow = {
-    purple: "from-purple-500/[0.08]",
-    blue:   "from-blue-500/[0.08]",
-    none:   "from-white/[0.03]",
-  };
-  return (
-    <div
-      className={`animate-card-enter relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.055] via-white/[0.02] to-transparent backdrop-blur-2xl shadow-[0_12px_48px_rgba(0,0,0,0.55),inset_0_1px_0_rgba(255,255,255,0.05)] transition-all duration-500 group ${glows[accentColor] ?? glows.purple} ${noPad ? "" : "p-6 md:p-8"} ${className}`}
-      style={{ animationDelay: `${delay}ms`, opacity: 0 }}
-    >
-      {/* Top prismatic line */}
-      <div className={`absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent ${topEdge[accentColor]} to-transparent`} />
-      {/* Corner radiance */}
-      <div className={`absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl ${cornerGlow[accentColor]} to-transparent rounded-bl-full pointer-events-none`} />
-      {children}
-    </div>
-  );
-}
-
-/* ─── Stat Card ────────────────────────────────────────────────────────────── */
-function StatCard({ label, value, sub, icon, colorClass, glowHex, barWidth = "60%", delay = 0 }) {
-  return (
-    <div
-      className="animate-card-enter relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.06] via-white/[0.02] to-transparent backdrop-blur-xl p-5 hover:scale-[1.04] hover:border-white/[0.15] transition-all duration-300 cursor-default group shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
-      style={{ animationDelay: `${delay}ms`, opacity: 0 }}
-    >
-      {/* Top glow line */}
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-      {/* Corner bg glow */}
-      <div
-        className="absolute -bottom-8 -right-8 w-28 h-28 rounded-full blur-3xl opacity-20 group-hover:opacity-40 transition-opacity duration-500"
-        style={{ background: glowHex }}
-      />
-      {/* Icon pill */}
-      <div className="flex items-start justify-between mb-4">
-        <span className="text-[9px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</span>
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shadow-lg"
-          style={{ background: `${glowHex}28`, color: glowHex, boxShadow: `0 0 12px ${glowHex}40` }}
-        >
-          {icon}
-        </div>
-      </div>
-      {/* Value */}
-      <div className={`text-[1.65rem] font-black font-mono leading-none ${colorClass} mb-1`}>{value}</div>
-      <div className="text-[9px] font-bold uppercase tracking-wider text-slate-600 mb-3">{sub}</div>
-      {/* Progress bar */}
-      <div className="h-[3px] w-full rounded-full bg-white/[0.06] overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-1000 ease-out"
-          style={{ width: barWidth, background: `linear-gradient(90deg, ${glowHex}80, ${glowHex})` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-/* ─── Live Code Preview ─────────────────────────────────────────────────────── */
-function CodePreview() {
-  const lines = [
-    { tokens: [{ t: "// CodeFusionAI — real-time collab engine", c: "text-slate-600 italic" }] },
-    { tokens: [] },
-    { tokens: [{ t: "import", c: "text-pink-400 font-semibold" }, { t: " { socket, ai } ", c: "text-slate-300" }, { t: "from", c: "text-pink-400 font-semibold" }, { t: " 'codefusion-sdk'", c: "text-emerald-400" }] },
-    { tokens: [] },
-    { tokens: [{ t: "const", c: "text-pink-400 font-semibold" }, { t: " room ", c: "text-sky-300" }, { t: "=", c: "text-slate-400" }, { t: " await ", c: "text-pink-400 font-semibold" }, { t: "socket", c: "text-slate-300" }, { t: ".", c: "text-slate-500" }, { t: "create", c: "text-blue-300" }, { t: "({" , c: "text-slate-400" }] },
-    { tokens: [{ t: "  model", c: "text-violet-300" }, { t: ": ", c: "text-slate-500" }, { t: "'gemini-2.0-flash'", c: "text-emerald-400" }, { t: ",", c: "text-slate-500" }] },
-    { tokens: [{ t: "  collab", c: "text-violet-300" }, { t: ": ", c: "text-slate-500" }, { t: "true", c: "text-orange-400" }, { t: ",", c: "text-slate-500" }] },
-    { tokens: [{ t: "  sync", c: "text-violet-300" }, { t: ": ", c: "text-slate-500" }, { t: "'crdt'", c: "text-emerald-400" }, { t: ",", c: "text-slate-500" }] },
-    { tokens: [{ t: "  sandbox", c: "text-violet-300" }, { t: ": ", c: "text-slate-500" }, { t: "'webcontainer'", c: "text-emerald-400" }] },
-    { tokens: [{ t: "})", c: "text-slate-400" }] },
-    { tokens: [] },
-    { tokens: [{ t: "await", c: "text-pink-400 font-semibold" }, { t: " room", c: "text-sky-300" }, { t: ".", c: "text-slate-500" }, { t: "invite", c: "text-blue-300" }, { t: "(collaborators)", c: "text-slate-400" }] },
-  ];
-
-  return (
-    <div className="relative rounded-xl overflow-hidden border border-white/[0.1] shadow-[0_20px_60px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.06)]" style={{ background: "linear-gradient(160deg, #0d1117 0%, #0a0e17 100%)" }}>
-      {/* Traffic lights + tabs */}
-      <div className="flex items-center gap-0 border-b border-white/[0.07]" style={{ background: "rgba(255,255,255,0.025)" }}>
-        <div className="flex items-center gap-1.5 px-4 py-2.5">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57] shadow-[0_0_6px_#ff5f5780]" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#febc2e] shadow-[0_0_6px_#febc2e80]" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#28c840] shadow-[0_0_6px_#28c84080]" />
-        </div>
-        {/* Tabs */}
-        <div className="flex items-end gap-0 ml-2 text-[10px] font-mono">
-          <div className="px-4 py-2 border-b-2 border-purple-400 text-slate-300 bg-white/[0.04] -mb-px">main.js</div>
-          <div className="px-4 py-2 text-slate-600 hover:text-slate-500 transition-colors">room.config.ts</div>
-        </div>
-        <div className="ml-auto flex items-center gap-1.5 px-4">
-          <span className="relative flex h-1.5 w-1.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-          </span>
-          <span className="text-[9px] text-emerald-400 font-black tracking-widest">LIVE SYNC</span>
-        </div>
-      </div>
-      {/* Code area */}
-      <div className="flex">
-        {/* Gutter */}
-        <div className="py-4 px-3 border-r border-white/[0.05] select-none" style={{ background: "rgba(0,0,0,0.15)" }}>
-          {lines.map((_, i) => (
-            <div key={i} className="text-[10px] text-slate-700 font-mono leading-6 text-right">{i + 1}</div>
-          ))}
-          <div className="text-[10px] text-slate-700 font-mono leading-6 text-right">{lines.length + 1}</div>
-        </div>
-        {/* Lines */}
-        <div className="px-4 py-4 font-mono text-[11.5px] leading-6 select-none flex-1">
-          {lines.map((line, i) => (
-            <div key={i} className={`${i === 4 ? "bg-purple-500/[0.07] -mx-4 px-4 rounded" : ""}`}>
-              {line.tokens.length === 0
-                ? <>&nbsp;</>
-                : line.tokens.map((tok, j) => <span key={j} className={tok.c}>{tok.t}</span>)
-              }
-            </div>
-          ))}
-          {/* Cursor */}
-          <div>
-            <span className="inline-block w-[7px] h-[13px] bg-purple-400 opacity-90 animate-blink rounded-[1px] align-middle" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Dashboard ─────────────────────────────────────────────────────────────── */
 function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -429,7 +142,7 @@ function Dashboard() {
     <div className="relative min-h-screen bg-[#030812] text-slate-100 flex flex-col font-sans overflow-x-hidden">
       <InteractiveBg />
 
-      {/* ── Navbar ─────────────────────────────────────────────────────────── */}
+      {/* ── Navbar ── */}
       <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#030812]/80 backdrop-blur-2xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
 
@@ -493,12 +206,12 @@ function Dashboard() {
         </div>
       </header>
 
-      {/* ── Main Content ─────────────────────────────────────────────────────── */}
+      {/* ── Main Content ── */}
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
         {activeTab === "Dashboard" && (
           <>
-            {/* ── HERO — Two column layout ─────────────────────────────────────── */}
+            {/* ── HERO — Two column layout ── */}
         <section className="mb-14 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
 
           {/* Left — Text */}
@@ -592,13 +305,11 @@ function Dashboard() {
               <div className="relative">
                 <CodePreview />
               </div>
-              
-              
             </div>
           </div>
         </section>
 
-        {/* ── Stats Row ────────────────────────────────────────────────────── */}
+        {/* ── Stats Row ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-12 select-none">
           <StatCard label="Sync Latency"  value="~12ms"                       sub="Websockets Active"  icon="⚡"   colorClass="text-emerald-400" glowHex="#10b981" barWidth="85%" delay={0}   />
           <StatCard label="Active Rooms"  value={roomId ? "1 / 5" : "0 / 5"} sub="Developer Capacity" icon="◈"   colorClass="text-violet-400"  glowHex="#8b5cf6" barWidth={roomId ? "20%" : "5%"} delay={80}  />
@@ -606,7 +317,7 @@ function Dashboard() {
           <StatCard label="Compilers"     value="WASM Node.js"               sub="WebContainer Sandbox" icon="</>" colorClass="text-cyan-400"    glowHex="#06b6d4" barWidth="75%" delay={240} />
         </div>
 
-        {/* ── Main Grid ────────────────────────────────────────────────────── */}
+        {/* ── Main Grid ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
           {/* Left 2-col */}
@@ -710,7 +421,7 @@ function Dashboard() {
                       {copied ? (
                         <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Copied!</>
                       ) : (
-                        <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3" /></svg>Copy ID</>
+                        <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1" /></svg>Copy ID</>
                       )}
                     </button>
                   </div>
@@ -775,7 +486,7 @@ function Dashboard() {
             </Card>
           </div>
 
-          {/* ── Sidebar ────────────────────────────────────────────────────── */}
+          {/* ── Sidebar ── */}
           <div className="space-y-5">
 
             {/* Profile */}
@@ -791,7 +502,7 @@ function Dashboard() {
                     <ProfileImage
                       src={user?.photoURL}
                       fallback={getInitials()}
-                      alt={user.displayName || "Avatar"}
+                      alt={user?.displayName || "Avatar"}
                       className="w-16 h-16 rounded-2xl object-cover ring-2 ring-purple-500/40 shadow-2xl text-lg"
                     />
                     {/* Online dot */}
@@ -891,7 +602,7 @@ function Dashboard() {
         )}
       </main>
 
-      {/* ── Footer ─────────────────────────────────────────────────────────── */}
+      {/* ── Footer ── */}
       <footer className="relative z-10 border-t border-white/[0.04] py-5 mt-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-600">
           <span>© 2025 CodeFusionAI — Real-time AI Pair Programming</span>

@@ -1,169 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { signInWithGoogle, signInWithGoogleRedirect, loginUser, registerUser } from "../firebase/firebase";
 import { useAuth } from "../context/AuthContext";
 
-/* ─── Animated Particle Canvas ──────────────────────────────────────────── */
-function ParticleCanvas() {
-  const canvasRef = useRef(null);
+import ParticleCanvas from "../components/Login/ParticleCanvas";
+import OrbBg from "../components/Login/OrbBg";
+import StatBadge from "../components/Login/StatBadge";
+import FloatingCard from "../components/Login/FloatingCard";
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    let raf;
-    let W = (canvas.width  = window.innerWidth);
-    let H = (canvas.height = window.innerHeight);
-    let mouseX = W / 2, mouseY = H / 2;
-
-    const onResize = () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; };
-    const onMove   = (e) => { mouseX = e.clientX; mouseY = e.clientY; };
-    window.addEventListener("resize",    onResize, { passive: true });
-    window.addEventListener("mousemove", onMove,   { passive: true });
-
-    // Nodes
-    const NODE_COUNT = 55;
-    const nodes = Array.from({ length: NODE_COUNT }, () => ({
-      x: Math.random() * W, y: Math.random() * H,
-      vx: (Math.random() - 0.5) * 0.45,
-      vy: (Math.random() - 0.5) * 0.45,
-      r:  Math.random() * 1.6 + 0.4,
-      pulse: Math.random() * Math.PI * 2,
-    }));
-
-    const LINK_DIST = 160;
-
-    function draw() {
-      ctx.clearRect(0, 0, W, H);
-
-      // Mouse attraction
-      nodes.forEach(n => {
-        const dx = mouseX - n.x, dy = mouseY - n.y;
-        const d  = Math.sqrt(dx * dx + dy * dy);
-        if (d < 260) {
-          n.vx += (dx / d) * 0.012;
-          n.vy += (dy / d) * 0.012;
-        }
-        n.vx *= 0.97; n.vy *= 0.97;
-        n.x += n.vx; n.y += n.vy;
-        n.pulse += 0.018;
-        if (n.x < 0 || n.x > W) n.vx *= -1;
-        if (n.y < 0 || n.y > H) n.vy *= -1;
-      });
-
-      // Edges
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[j].x - nodes[i].x;
-          const dy = nodes[j].y - nodes[i].y;
-          const d  = Math.sqrt(dx * dx + dy * dy);
-          if (d < LINK_DIST) {
-            const a = (1 - d / LINK_DIST) * 0.22;
-            const grd = ctx.createLinearGradient(nodes[i].x, nodes[i].y, nodes[j].x, nodes[j].y);
-            grd.addColorStop(0, `rgba(139,92,246,${a})`);
-            grd.addColorStop(1, `rgba(59,130,246,${a * 0.6})`);
-            ctx.beginPath();
-            ctx.strokeStyle = grd;
-            ctx.lineWidth   = 0.7;
-            ctx.moveTo(nodes[i].x, nodes[i].y);
-            ctx.lineTo(nodes[j].x, nodes[j].y);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Nodes (dots)
-      nodes.forEach(n => {
-        const glow = (Math.sin(n.pulse) + 1) / 2;
-        const alpha = 0.35 + glow * 0.45;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, n.r + glow * 0.8, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(168,85,247,${alpha})`;
-        ctx.fill();
-      });
-
-      raf = requestAnimationFrame(draw);
-    }
-    draw();
-
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize",    onResize);
-      window.removeEventListener("mousemove", onMove);
-    };
-  }, []);
-
-  return <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none opacity-70" />;
-}
-
-/* ─── CSS Orb Background ────────────────────────────────────────────────── */
-function OrbBg() {
-  const spotRef = useRef(null);
-  const o1 = useRef(null), o2 = useRef(null), o3 = useRef(null);
-
-  const onMove = useCallback((e) => {
-    const px = (e.clientX / window.innerWidth  - 0.5) * 2;
-    const py = (e.clientY / window.innerHeight - 0.5) * 2;
-    if (spotRef.current) spotRef.current.style.background = `radial-gradient(900px circle at ${e.clientX}px ${e.clientY}px, rgba(120,60,255,0.07), transparent 65%)`;
-    if (o1.current) o1.current.style.transform = `translate(${px * 40}px, ${py * 28}px)`;
-    if (o2.current) o2.current.style.transform = `translate(${px * -28}px, ${py * -20}px)`;
-    if (o3.current) o3.current.style.transform = `translate(${px * 18}px, ${py * 30}px)`;
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener("mousemove", onMove, { passive: true });
-    return () => window.removeEventListener("mousemove", onMove);
-  }, [onMove]);
-
-  return (
-    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-      {/* Base gradient */}
-      <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 130% 70% at 50% -15%, rgba(109,40,217,0.30) 0%, rgba(79,70,229,0.12) 45%, transparent 70%)" }} />
-      <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 80% 35% at 50% 115%, rgba(37,99,235,0.20) 0%, transparent 65%)" }} />
-      {/* Right glow for form side */}
-      <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 50% 80% at 100% 50%, rgba(79,70,229,0.10) 0%, transparent 60%)" }} />
-
-      <div ref={o1} className="animate-orb absolute rounded-full blur-[160px] transition-transform duration-[1400ms] ease-out"
-        style={{ width: 800, height: 800, top: "-25%", left: "0%", background: "radial-gradient(circle, rgba(124,58,237,0.40) 0%, rgba(79,70,229,0.18) 55%, transparent 80%)" }} />
-      <div ref={o2} className="animate-orb-slow absolute rounded-full blur-[180px] transition-transform duration-[1600ms] ease-out"
-        style={{ width: 640, height: 640, bottom: "-12%", right: "-5%", background: "radial-gradient(circle, rgba(37,99,235,0.30) 0%, rgba(8,145,178,0.15) 55%, transparent 80%)" }} />
-      <div ref={o3} className="animate-orb-med absolute rounded-full blur-[130px] transition-transform duration-[1100ms] ease-out"
-        style={{ width: 420, height: 420, top: "38%", left: "45%", background: "radial-gradient(circle, rgba(219,39,119,0.22) 0%, rgba(147,51,234,0.14) 55%, transparent 80%)" }} />
-      <div className="animate-orb absolute rounded-full blur-[100px]"
-        style={{ width: 260, height: 260, top: "62%", left: "8%", background: "radial-gradient(circle, rgba(20,184,166,0.18) 0%, transparent 75%)", animationDelay: "-8s" }} />
-
-      <div ref={spotRef} className="absolute inset-0 transition-[background] duration-100" />
-      {/* Vignette */}
-      <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 110% 110% at 50% 50%, transparent 35%, rgba(5,8,20,0.82) 100%)" }} />
-    </div>
-  );
-}
-
-/* ─── Stat Counter ───────────────────────────────────────────────────────── */
-function StatBadge({ value, label, color }) {
-  return (
-    <div className="text-center">
-      <div className="text-2xl font-black" style={{ color }}>{value}</div>
-      <div className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mt-0.5">{label}</div>
-    </div>
-  );
-}
-
-/* ─── Floating Mini Card ─────────────────────────────────────────────────── */
-function FloatingCard({ children, className = "", style = {} }) {
-  return (
-    <div
-      className={`absolute rounded-2xl border border-white/[0.10] backdrop-blur-xl shadow-2xl ${className}`}
-      style={{ background: "rgba(10,14,30,0.85)", ...style }}
-    >
-      {/* top edge */}
-      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-400/40 to-transparent rounded-t-2xl" />
-      {children}
-    </div>
-  );
-}
-
-/* ─── Login ──────────────────────────────────────────────────────────────── */
 function Login() {
   const { user } = useAuth();
   const [isRegister, setIsRegister] = useState(false);
@@ -278,7 +122,7 @@ function Login() {
       <OrbBg />
       <ParticleCanvas />
 
-      {/* ── Topbar ─────────────────────────────────────────────────────── */}
+      {/* ── Topbar ── */}
       <nav className="relative z-30 flex items-center justify-between px-6 lg:px-10 py-5">
         <div className="flex items-center gap-3 select-none">
           <div className="bg-gradient-to-tr from-purple-600 via-violet-500 to-indigo-500 p-2.5 rounded-xl shadow-xl shadow-purple-500/30 animate-pulse-ring">
@@ -299,11 +143,11 @@ function Login() {
         </div>
       </nav>
 
-      {/* ── Body ───────────────────────────────────────────────────────── */}
+      {/* ── Body ── */}
       <main className="relative z-20 flex-1 flex items-center justify-center px-4 py-6">
         <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-[1fr_480px] gap-16 items-center">
 
-          {/* ───── LEFT ─────────────────────────────────────────────────── */}
+          {/* ───── LEFT ───── */}
           <div className="hidden lg:flex flex-col">
 
             {/* Badge */}
@@ -328,7 +172,7 @@ function Login() {
 
             {/* Stats row */}
             <div className="animate-card-enter flex items-center gap-8 mb-10 pl-1" style={{ animationDelay: "120ms" }}>
-              <StatBadge value="&lt;12ms" label="Sync Latency"    color="#34d399" />
+              <StatBadge value="<12ms" label="Sync Latency"    color="#34d399" />
               <div className="w-px h-8 bg-white/[0.07]" />
               <StatBadge value="4"       label="Languages"        color="#a78bfa" />
               <div className="w-px h-8 bg-white/[0.07]" />
@@ -337,7 +181,7 @@ function Login() {
               <StatBadge value="∞"       label="Collaborators"    color="#f472b6" />
             </div>
 
-            {/* Illustration area — floating UI cards over a gradient slab */}
+            {/* Illustration area ── floating UI cards over a gradient slab */}
             <div className="animate-card-enter relative h-[310px]" style={{ animationDelay: "180ms" }}>
 
               {/* Base slab */}
@@ -358,7 +202,7 @@ function Login() {
                 </div>
               </div>
 
-              {/* Floating card — AI suggestion */}
+              {/* Floating card ── AI suggestion */}
               <FloatingCard className="animate-float top-4 right-4 px-4 py-3.5 z-10 w-64" style={{ animationDelay: "0s" }}>
                 <div className="flex items-start gap-3">
                   <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 flex items-center justify-center text-[9px] font-black text-white shrink-0 shadow-lg shadow-purple-500/30">AI</div>
@@ -373,7 +217,7 @@ function Login() {
                 </div>
               </FloatingCard>
 
-              {/* Floating card — peers online */}
+              {/* Floating card ── peers online */}
               <FloatingCard className="animate-float bottom-4 left-4 px-4 py-3 z-10" style={{ animationDelay: "-3.5s" }}>
                 <div className="flex items-center gap-3">
                   <div className="flex -space-x-2">
@@ -393,7 +237,7 @@ function Login() {
                 </div>
               </FloatingCard>
 
-              {/* Floating card — latency */}
+              {/* Floating card ── latency */}
               <FloatingCard className="animate-float bottom-14 right-6 px-3.5 py-2.5 z-10" style={{ animationDelay: "-6s" }}>
                 <div className="text-center">
                   <div className="text-lg font-black text-emerald-400 font-mono leading-none">9ms</div>
@@ -419,7 +263,7 @@ function Login() {
             </div>
           </div>
 
-          {/* ───── RIGHT — Auth Card ─────────────────────────────────────── */}
+          {/* ───── RIGHT — Auth Card ───── */}
           <div className="flex flex-col items-center">
             <div className="w-full animate-card-enter" style={{ animationDelay: "80ms" }}>
               <div className="relative">
@@ -489,7 +333,7 @@ function Login() {
                       <div className="flex items-center gap-2 mt-3">
                         <div className="flex -space-x-1.5">
                           {["#7c3aed","#3b82f6","#10b981","#f59e0b"].map((c,i) => (
-                            <div key={i} className="w-5 h-5 rounded-full border border-[#100c28]" style={{ background: `radial-gradient(circle at 35% 35%, ${c}ee, ${c}88)` }} />
+                             <div key={i} className="w-5 h-5 rounded-full border border-[#100c28]" style={{ background: `radial-gradient(circle at 35% 35%, ${c}ee, ${c}88)` }} />
                           ))}
                         </div>
                         <div className="flex">{[1,2,3,4,5].map(i => <span key={i} className="text-amber-400 text-[10px]">★</span>)}</div>
@@ -645,10 +489,10 @@ function Login() {
                         className="group relative overflow-hidden w-full flex items-center justify-center gap-3 py-4 rounded-2xl text-white font-black text-[14px] cursor-pointer disabled:opacity-40 disabled:pointer-events-none transition-all duration-300 active:scale-[0.98] mt-2"
                         style={{
                           background: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 25%, #6d28d9 50%, #4f46e5 75%, #3b82f6 100%)",
-                          boxShadow: "0 0 0 1px rgba(168,85,247,0.5), 0 8px 32px rgba(109,40,217,0.55), 0 20px 60px rgba(79,70,229,0.35), inset 0 1px 0 rgba(255,255,255,0.22)",
+                          boxShadow: "0 0 0 1px rgba(168,85,247,0.5), 0 8px 32px rgba(109,40,217,0.6), 0 20px 60px rgba(79,70,229,0.4), inset 0 1px 0 rgba(255,255,255,0.22)",
                         }}
                         onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 0 0 1px rgba(168,85,247,0.7), 0 12px 48px rgba(109,40,217,0.75), 0 28px 80px rgba(79,70,229,0.50), inset 0 1px 0 rgba(255,255,255,0.25)"; }}
-                        onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 0 0 1px rgba(168,85,247,0.5), 0 8px 32px rgba(109,40,217,0.55), 0 20px 60px rgba(79,70,229,0.35), inset 0 1px 0 rgba(255,255,255,0.22)"; }}>
+                        onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 0 0 1px rgba(168,85,247,0.5), 0 8px 32px rgba(109,40,217,0.6), 0 20px 60px rgba(79,70,229,0.4), inset 0 1px 0 rgba(255,255,255,0.22)"; }}>
                         {/* Shimmer */}
                         <span className="absolute inset-0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-[800ms] bg-gradient-to-r from-transparent via-white/25 to-transparent skew-x-[-15deg]" />
                         {/* Top glint */}
@@ -695,7 +539,7 @@ function Login() {
         </div>
       </main>
 
-      {/* ── Footer ──────────────────────────────────────────────────────── */}
+      {/* ── Footer ── */}
       <footer className="relative z-20 px-8 py-4 border-t border-white/[0.04]">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-800">
           <span>© 2025 CodeFusionAI — Real-time AI Pair Programming Platform</span>

@@ -4,6 +4,7 @@ import Editor, { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor";
 
 loader.config({ monaco });
+
 import { socket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
 import TerminalComponent from "../components/Terminal";
@@ -11,407 +12,21 @@ import { syncFilesToWebContainer, onServerReady } from "../services/webcontainer
 import { loadWorkspaceFiles, saveWorkspaceFiles } from "../services/db";
 import RoomAIAssist from "../components/AIAssist/RoomAIAssist";
 
-/* ═══════════════════════════════════════
-   CONSTANTS
-═══════════════════════════════════════ */
-const LANGUAGES = [
-  { id: "javascript", label: "JavaScript",  ext: ["js", "jsx"],  color: "#c8a64b" },
-  { id: "python",     label: "Python",       ext: ["py"],         color: "#4c8eda" },
-  { id: "cpp",        label: "C++",          ext: ["cpp","h","c"],color: "#6c8fca" },
-  { id: "java",       label: "Java",         ext: ["java"],       color: "#d68a3a" },
-  { id: "css",        label: "CSS",          ext: ["css"],        color: "#9b8cd4" },
-  { id: "html",       label: "HTML",         ext: ["html","htm"], color: "#e37933" },
-  { id: "json",       label: "JSON",         ext: ["json"],       color: "#cbcb41" },
-];
+import { LANGUAGES, getLangByExt, getFileColor, VS, BOILERPLATES } from "../components/Room/constants";
+import FileIcon from "../components/Room/FileIcon";
+import FolderIcon from "../components/Room/FolderIcon";
+import ActivityIcon from "../components/Room/ActivityIcon";
+import NewItemModal from "../components/Room/NewItemModal";
+import DeleteModal from "../components/Room/DeleteModal";
+import UploadModal from "../components/Room/UploadModal";
+import CopyRoomId from "../components/Room/CopyRoomId";
 
-const BOILERPLATES = {
-  javascript: '// Welcome to CodeFusionAI 🚀\n\nconsole.log("Hello World!");\n',
-  python: '# Welcome to CodeFusionAI 🚀\n\nprint("Hello World!")\n',
-  cpp: '// Welcome to CodeFusionAI 🚀\n\n#include <iostream>\n\nint main() {\n    std::cout << "Hello World!" << std::endl;\n    return 0;\n}\n',
-  java: '// Welcome to CodeFusionAI 🚀\n\npublic class temp_run {\n    public static void main(String[] args) {\n        System.out.println("Hello World!");\n    }\n}\n',
-  css: '/* Welcome to CodeFusionAI 🚀 */\n\nbody {\n    margin: 0;\n    padding: 0;\n}\n',
-  html: '<!-- Welcome to CodeFusionAI 🚀 -->\n<!DOCTYPE html>\n<html lang="en">\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello World!</h1>\n</body>\n</html>\n',
-  json: '{\n  "message": "Hello World!"\n}\n'
-};
-
-function getLangByExt(filename) {
-  const ext = filename.split(".").pop().toLowerCase();
-  return LANGUAGES.find((l) => l.ext.includes(ext)) || null;
-}
-
-function getFileColor(filename) {
-  const lang = getLangByExt(filename);
-  return lang ? lang.color : "#858585";
-}
-
-/* ── Enhanced VS Code colour palette ── */
-const VS = {
-  bg:           "var(--vs-bg)",
-  sidebarBg:    "var(--vs-sidebarBg)",
-  activityBg:   "var(--vs-activityBg)",
-  tabBarBg:     "var(--vs-tabBarBg)",
-  tabActive:    "var(--vs-tabActive)",
-  tabInactive:  "var(--vs-tabInactive)",
-  tabBorder:    "var(--vs-tabBorder)",
-  statusBg:     "var(--vs-statusBg)",
-  input:        "var(--vs-input)",
-  border:       "var(--vs-border)",
-  highlight:    "var(--vs-highlight)",
-  hover:        "var(--vs-hover)",
-  text:         "var(--vs-text)",
-  textMuted:    "var(--vs-textMuted)",
-  textDim:      "var(--vs-textDim)",
-  accent:       "var(--vs-accent)",
-  accentPurple: "var(--vs-accentPurple)",
-  green:        "var(--vs-green)",
-  teal:         "var(--vs-teal)",
-  yellow:       "var(--vs-yellow)",
-  red:          "var(--vs-red)",
-  orange:       "var(--vs-orange)",
-  gradientA:    "var(--vs-gradientA)",
-  gradientB:    "var(--vs-gradientB)",
-};
-
-/* ═══════════════════════════════════════
-   FILE ICON (SVG coloured by language)
-═══════════════════════════════════════ */
-function FileIcon({ filename, size = 14 }) {
-  const color = getFileColor(filename);
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className="shrink-0">
-      <path d="M4 2h5.5L13 5.5V14H4V2z" fill={color + "20"} stroke={color} strokeWidth="1" />
-      <path d="M9 2v3.5h4" stroke={color} strokeWidth="1" fill="none" />
-      <path d="M6 8h4M6 10h3" stroke={color} strokeWidth="0.8" strokeLinecap="round" opacity="0.6" />
-    </svg>
-  );
-}
-
-
-
-function FolderIcon({ open = false, size = 14 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" className="shrink-0">
-      {open ? (
-        <>
-          <path d="M1 5h4.5l1.5 2H15v7H1V5z" fill="#e3b34120" stroke="#e3b341" strokeWidth="0.9" />
-          <path d="M1 7h14" stroke="#e3b341" strokeWidth="0.7" opacity="0.5" />
-        </>
-      ) : (
-        <path d="M1 5h4.5l1 2H15v7H1V5z" fill="#e3b34118" stroke="#e3b341" strokeWidth="0.9" />
-      )}
-    </svg>
-  );
-}
-
-/* ═══════════════════════════════════════
-   ACTIVITY BAR ICON
-═══════════════════════════════════════ */
-function ActivityIcon({ title, active, onClick, accentColor = "#58a6ff", children }) {
-  return (
-    <button
-      title={title}
-      onClick={onClick}
-      className="w-12 h-12 flex items-center justify-center relative group transition-all duration-150"
-      style={{
-        color: active ? VS.text : VS.textDim,
-        borderLeft: active ? `2px solid ${accentColor}` : "2px solid transparent",
-        background: active ? VS.hover : "transparent",
-      }}
-      onMouseEnter={(e) => {
-        if (!active) e.currentTarget.style.color = "#7d8590";
-      }}
-      onMouseLeave={(e) => {
-        if (!active) e.currentTarget.style.color = "#484f58";
-      }}
-    >
-      {active && (
-        <span
-          className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r"
-          style={{ background: "#21262d" }}
-        />
-      )}
-      {children}
-    </button>
-  );
-}
-
-/* ═══════════════════════════════════════
-   MODAL — NEW FILE / FOLDER
-═══════════════════════════════════════ */
-function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel }) {
-  const [name,  setName]  = useState("");
-  const [error, setError] = useState("");
-  const inputRef = useRef(null);
-
-  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 40); }, []);
-
-  const submit = (e) => {
-    e.preventDefault();
-    const t = name.trim();
-    if (!t)               return setError("A file name must be provided.");
-    if (t.includes("/"))  return setError("The name may not contain '/'.");
-    const full = parentPath ? `${parentPath}/${t}` : t;
-    if (existingPaths.includes(full)) return setError("A file or folder with that name already exists.");
-    onConfirm(t);
-  };
-
-  const accentColor = isFolder ? "#e3b341" : "#58a6ff";
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ animation: "fadeIn 0.15s ease" }}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
-      <div
-        className="relative w-[440px] rounded-xl overflow-hidden shadow-2xl"
-        style={{
-          background: "#161b22",
-          border: "1px solid #30363d",
-          boxShadow: `0 0 0 1px #30363d, 0 24px 48px #00000080, 0 0 60px ${accentColor}18`,
-          animation: "slideUp 0.18s cubic-bezier(0.34,1.56,0.64,1)",
-        }}
-      >
-
-
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 pt-5 pb-4">
-          <div
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0"
-            style={{ background: accentColor + "18", border: `1px solid ${accentColor}30` }}
-          >
-            {isFolder ? "📁" : "📄"}
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold" style={{ color: "#e6edf3" }}>
-              New {isFolder ? "Folder" : "File"}
-            </h3>
-            {parentPath && (
-              <p className="text-[11px] mt-0.5" style={{ color: "#7d8590", fontFamily: "Consolas, monospace" }}>
-                inside / {parentPath}
-              </p>
-            )}
-          </div>
-          <button
-            onClick={onCancel}
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-lg leading-none transition-colors"
-            style={{ color: "#484f58" }}
-            onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
-            onMouseLeave={(e) => e.currentTarget.style.color = "#484f58"}
-          >×</button>
-        </div>
-
-        {/* Body */}
-        <form onSubmit={submit} className="px-5 pb-5 flex flex-col gap-4">
-          <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider mb-2 block" style={{ color: "#7d8590" }}>
-              {isFolder ? "Folder" : "File"} Name
-            </label>
-            <input
-              ref={inputRef}
-              value={name}
-              onChange={(e) => { setName(e.target.value); setError(""); }}
-              placeholder={isFolder ? "e.g.  components" : "e.g.  index.js"}
-              spellCheck={false}
-              className="w-full rounded-lg px-4 py-2.5 text-sm outline-none transition-all duration-150"
-              style={{
-                background: "#0d1117",
-                color: "#e6edf3",
-                border: `1px solid ${error ? "#f85149" : accentColor + "60"}`,
-                fontFamily: "'Consolas', monospace",
-                boxShadow: error ? "0 0 0 3px #f8514920" : `0 0 0 3px ${accentColor}12`,
-              }}
-            />
-            {error && (
-              <p className="mt-2 text-[11px] flex items-center gap-1.5" style={{ color: "#f85149" }}>
-                <span>⚠</span> {error}
-              </p>
-            )}
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <button
-              type="button" onClick={onCancel}
-              className="px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-150"
-              style={{ background: "#21262d", color: "#7d8590", border: "1px solid #30363d" }}
-              onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
-              onMouseLeave={(e) => e.currentTarget.style.color = "#7d8590"}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-lg text-xs font-bold transition-all duration-150"
-              style={{ background: accentColor, color: "#fff" }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = "0.85"}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
-            >
-              Create {isFolder ? "Folder" : "File"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════
-   MODAL — DELETE CONFIRM
-═══════════════════════════════════════ */
-function DeleteModal({ path, isFolder, onConfirm, onCancel }) {
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ animation: "fadeIn 0.15s ease" }}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
-      <div
-        className="relative w-[420px] rounded-xl overflow-hidden shadow-2xl"
-        style={{
-          background: "#161b22",
-          border: "1px solid #30363d",
-          boxShadow: "0 0 0 1px #30363d, 0 24px 48px #00000080, 0 0 60px #f8514918",
-          animation: "slideUp 0.18s cubic-bezier(0.34,1.56,0.64,1)",
-        }}
-      >
-        <div className="h-0.5" style={{ background: "#21262d" }} />
-
-        <div className="flex items-center gap-3 px-5 pt-5 pb-4">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0"
-            style={{ background: "#f8514918", border: "1px solid #f8514930" }}>
-            🗑
-          </div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold" style={{ color: "#e6edf3" }}>Delete {isFolder ? "Folder" : "File"}</h3>
-            <p className="text-[11px] mt-0.5 font-mono truncate" style={{ color: "#7d8590" }}>{path}</p>
-          </div>
-          <button onClick={onCancel} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg"
-            style={{ color: "#484f58" }}
-            onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
-            onMouseLeave={(e) => e.currentTarget.style.color = "#484f58"}
-          >×</button>
-        </div>
-
-        <div className="px-5 pb-5 flex flex-col gap-4">
-          <div className="rounded-lg p-3 text-xs leading-relaxed" style={{ background: "#f8514910", border: "1px solid #f8514920", color: "#e6edf3" }}>
-            {isFolder
-              ? "This will permanently delete the folder and all files inside it."
-              : "This will permanently delete this file."}{" "}
-            <span style={{ color: "#7d8590" }}>This action cannot be undone.</span>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button onClick={onCancel}
-              className="px-4 py-2 rounded-lg text-xs font-semibold transition-all"
-              style={{ background: "#21262d", color: "#7d8590", border: "1px solid #30363d" }}
-              onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
-              onMouseLeave={(e) => e.currentTarget.style.color = "#7d8590"}
-            >Cancel</button>
-            <button onClick={onConfirm}
-              className="px-5 py-2 rounded-lg text-xs font-bold transition-all"
-              style={{ background: "#21262d", color: "#fff", boxShadow: "0 4px 14px #f8514930" }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = "0.88"}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
-            >Delete</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════
-   MODAL — UPLOAD CONFIRM
-═══════════════════════════════════════ */
-function UploadModal({ fileCount, onConfirm, onCancel }) {
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ animation: "fadeIn 0.15s ease" }}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
-      <div
-        className="relative w-[440px] rounded-xl overflow-hidden shadow-2xl"
-        style={{
-          background: "#161b22",
-          border: "1px solid #30363d",
-          boxShadow: "0 0 0 1px #30363d, 0 24px 48px #00000080, 0 0 60px #58a6ff18",
-          animation: "slideUp 0.18s cubic-bezier(0.34,1.56,0.64,1)",
-        }}
-      >
-        <div className="h-0.5" style={{ background: "#21262d" }} />
-        <div className="flex items-center gap-3 px-5 pt-5 pb-4">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0"
-            style={{ background: "#58a6ff18", border: "1px solid #58a6ff30" }}>📤</div>
-          <div className="flex-1">
-            <h3 className="text-sm font-semibold" style={{ color: "#e6edf3" }}>Upload Folder</h3>
-            <p className="text-[11px] mt-0.5" style={{ color: "#7d8590" }}>{fileCount} files ready to import</p>
-          </div>
-          <button onClick={onCancel} className="w-7 h-7 flex items-center justify-center rounded-lg text-lg"
-            style={{ color: "#484f58" }}
-            onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
-            onMouseLeave={(e) => e.currentTarget.style.color = "#484f58"}
-          >×</button>
-        </div>
-        <div className="px-5 pb-5 flex flex-col gap-4">
-          <div className="rounded-lg p-3 text-xs leading-relaxed" style={{ background: "#e3b34110", border: "1px solid #e3b34120", color: "#e6edf3" }}>
-            ⚠ Uploading will <span style={{ color: "#f85149", fontWeight: 600 }}>replace your current workspace</span>. All existing files will be lost.
-          </div>
-          <div className="flex justify-end gap-2">
-            <button onClick={onCancel}
-              className="px-4 py-2 rounded-lg text-xs font-semibold transition-all"
-              style={{ background: "#21262d", color: "#7d8590", border: "1px solid #30363d" }}
-              onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
-              onMouseLeave={(e) => e.currentTarget.style.color = "#7d8590"}
-            >Cancel</button>
-            <button onClick={onConfirm}
-              className="px-5 py-2 rounded-lg text-xs font-bold transition-all"
-              style={{ background: "#21262d", color: "#fff", boxShadow: "0 4px 14px #58a6ff30" }}
-              onMouseEnter={(e) => e.currentTarget.style.opacity = "0.88"}
-              onMouseLeave={(e) => e.currentTarget.style.opacity = "1"}
-            >Upload & Replace</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════
-   COPY ROOM ID BUTTON
-═══════════════════════════════════════ */
-function CopyRoomId({ roomId }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(roomId).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-  return (
-    <button
-      onClick={copy}
-      title="Copy Room ID"
-      className="flex items-center justify-center w-4 h-4 rounded transition-all duration-150"
-      style={{ color: copied ? "#3fb950" : "#7d8590" }}
-      onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "#a371f7"; }}
-      onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "#7d8590"; }}
-    >
-      {copied ? (
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-          <path d="M3 8l4 4 6-6" stroke="#3fb950" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ) : (
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-          <rect x="5" y="1" width="9" height="11" rx="1" stroke="currentColor" strokeWidth="1.3" />
-          <path d="M2 5v9a1 1 0 0 0 1 1h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-        </svg>
-      )}
-    </button>
-  );
-}
-
-/* ═══════════════════════════════════════
-   MAIN COMPONENT
-═══════════════════════════════════════ */
 export default function Room() {
   const { roomId }  = useParams();
   const navigate    = useNavigate();
   const { user }    = useAuth();
   const username    = user?.displayName || user?.email?.split("@")[0] || "Developer";
   const photoURL    = user?.photoURL || "";
-
-
 
   /* ── State ── */
   const [files,           setFiles]           = useState([]);
@@ -438,7 +53,6 @@ export default function Room() {
   };
   const [isRunning,       setIsRunning]       = useState(false);
   const [activePanel,     setActivePanel]     = useState("explorer"); // explorer | users | ai
-
 
   /* ── Terminal & Sidebar resize ── */
   const [terminalHeight, setTerminalHeight] = useState(250);
@@ -772,8 +386,6 @@ export default function Room() {
       );
     });
 
-
-
     return () => {
       socket.off("connect", handleConnect);
       socket.off("room-joined");
@@ -995,8 +607,6 @@ export default function Room() {
     }
   };
 
-
-
   /* ── ZIP Download ── */
   const downloadZip = async () => {
     if (!window.JSZip) {
@@ -1066,7 +676,7 @@ export default function Room() {
               </svg>
               <FolderIcon open={isExpanded} size={15} />
               <span className="text-[13px] flex-1 truncate" style={{ color: VS.text }}>{node.name}</span>
-              {/* Inline actions (show on hover via CSS trick with opacity on the group) */}
+              {/* Inline actions */}
               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   title="New File"
@@ -1133,9 +743,6 @@ export default function Room() {
   const existingPaths = files.map((f) => f.path);
   const fileCount     = files.filter((f) => !f.isFolder).length;
 
-  /* ══════════════════════════════════════════
-     RENDER
-  ══════════════════════════════════════════ */
   return (
     <>
       {/* ── MODALS ── */}
@@ -1263,7 +870,7 @@ export default function Room() {
             )}
           </div>
 
-          {/* Right – nothing here now; Leave is in activity bar */}
+          {/* Right */}
           <div />
         </div>
 
@@ -1508,7 +1115,6 @@ export default function Room() {
                 />
               )}
 
-
             </div>
               {/* ── HORIZONTAL DRAG DIVIDER ── */}
               <div
@@ -1713,8 +1319,6 @@ export default function Room() {
               className="shrink-0 flex flex-col"
               style={{ height: `${terminalHeight}px`, background: "#0d1117" }}
             >
-
-
               {/* Output */}
               <div className="flex-1 overflow-hidden min-h-0">
                 <TerminalComponent theme={roomTheme} />

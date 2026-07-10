@@ -31,7 +31,6 @@ const broadcastRoomUsers = async (io, roomId) => {
  */
 export const registerSocketHandlers = (io) => {
   io.on("connection", (socket) => {
-    console.log("User Connected:", socket.id);
 
     socket.emit("welcome", "Socket Connected Successfully");
 
