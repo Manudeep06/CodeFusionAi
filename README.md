@@ -148,9 +148,18 @@ Follow these steps to run CodeFusionAI locally on your system.
    VITE_BACKEND_URL=http://localhost:5000
    VITE_API_URL=http://localhost:5000/api/ai
    VITE_STACKBLITZ_API_KEY=your_optional_webcontainer_key
+
+   # Firebase Configuration
+   VITE_FIREBASE_API_KEY=your_firebase_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=your_firebase_auth_domain
+   VITE_FIREBASE_PROJECT_ID=your_firebase_project_id
+   VITE_FIREBASE_STORAGE_BUCKET=your_firebase_storage_bucket
+   VITE_FIREBASE_MESSAGING_SENDER_ID=your_firebase_messaging_sender_id
+   VITE_FIREBASE_APP_ID=your_firebase_app_id
+   VITE_FIREBASE_MEASUREMENT_ID=your_firebase_measurement_id
    ```
 
-4. Configure your Firebase project details in `Frontend/src/firebase/firebase.js`.
+4. Configure your Firebase project details in the `Frontend/.env` file.
 
 5. Launch the React development server:
    ```bash
