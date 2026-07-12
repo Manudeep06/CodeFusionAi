@@ -8,7 +8,7 @@ loader.config({ monaco });
 import { socket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
 import TerminalComponent from "../components/Terminal";
-import { syncFilesToWebContainer, onServerReady } from "../services/webcontainer";
+import { syncFilesToWebContainer, onServerReady, shouldRunNpmInstall, recordNpmInstall } from "../services/webcontainer";
 import { loadWorkspaceFiles, saveWorkspaceFiles } from "../services/db";
 import RoomAIAssist from "../components/AIAssist/RoomAIAssist";
 
@@ -599,11 +599,23 @@ export default function Room() {
       
       if (pkgFile) {
         const parts = pkgFile.path.split("/");
-        if (parts.length > 1) {
-          const dir = parts.slice(0, -1).join("/");
-          cmd = `cd "${dir}" && npm install && npm run dev\r`;
+        const dir = parts.length > 1 ? parts.slice(0, -1).join("/") : "";
+        const pkgContent = pkgFile.content || "";
+        
+        const needInstall = await shouldRunNpmInstall(dir, pkgContent);
+        if (needInstall) {
+          recordNpmInstall(dir, pkgContent);
+          if (dir) {
+            cmd = `cd "${dir}" && npm install && npm run dev\r`;
+          } else {
+            cmd = `npm install && npm run dev\r`;
+          }
         } else {
-          cmd = `npm install && npm run dev\r`;
+          if (dir) {
+            cmd = `cd "${dir}" && npm run dev\r`;
+          } else {
+            cmd = `npm run dev\r`;
+          }
         }
       } else if (language === "javascript") {
         cmd = `node "${activeFile}"\r`;
