@@ -329,7 +329,7 @@ Please respond clearly and provide code suggestions if relevant.`;
           --ai-text-muted: #475569;
           --ai-accent: #4f46e5;
           --ai-border: rgba(0, 0, 0, 0.08);
-          --ai-msg-user: linear-gradient(135deg, #6366f1, #4f46e5);
+          --ai-msg-user: var(--ai-accent);
           --ai-msg-user-text: #ffffff;
           --ai-msg-ai: #ffffff;
           --ai-msg-ai-text: #0f172a;
@@ -388,24 +388,6 @@ Please respond clearly and provide code suggestions if relevant.`;
             <line x1="5" y1="12" x2="19" y2="12"></line>
           </svg>
           <span>New Chat</span>
-        </button>
-
-        {/* Right - Toggle Theme */}
-        <button
-          onClick={() => {
-            const nextTheme = activeTheme === "dark" ? "light" : "dark";
-            if (onThemeChange) {
-              onThemeChange(nextTheme);
-            }
-          }}
-          className="px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 transition duration-150 cursor-pointer border hover:opacity-85"
-          style={{
-            color: "var(--ai-text)",
-            borderColor: "var(--ai-border)",
-            backgroundColor: "rgba(0,0,0,0.03)"
-          }}
-        >
-          <span>{activeTheme === "dark" ? "🌙" : "☀️"}</span>
         </button>
       </div>
 

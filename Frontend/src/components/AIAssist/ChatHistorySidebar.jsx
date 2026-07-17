@@ -7,19 +7,12 @@ export default function ChatHistorySidebar({
   onNewChat,
   onDeleteChat,
   onRenameChat,
-  activeTheme,
-  onChangeTheme,
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [editingChatId, setEditingChatId] = useState(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [isCollapsed, setIsCollapsed] = useState(false);
   const editInputRef = useRef(null);
-
-  const themesList = [
-    { id: "dark", name: "Dark Mode", color: "#8b5cf6", tooltip: "Classic Dark Mode" },
-    { id: "light", name: "Light Mode", color: "#3b82f6", tooltip: "Notebook Light Mode" },
-  ];
 
   useEffect(() => {
     if (editingChatId && editInputRef.current) {
@@ -260,56 +253,6 @@ export default function ChatHistorySidebar({
         )}
       </div>
 
-      {/* Theme Selector Section */}
-      <div
-        className="p-3 border-t flex flex-col gap-2 shrink-0 transition-all duration-300"
-        style={{
-          borderColor: "var(--ai-border)",
-          backgroundColor: "rgba(0,0,0,0.15)",
-        }}
-      >
-        {isCollapsed ? (
-          <button
-            onClick={() => {
-              // Cycle theme
-              const currentIndex = themesList.findIndex((t) => t.id === activeTheme);
-              const nextIndex = (currentIndex + 1) % themesList.length;
-              onChangeTheme(themesList[nextIndex].id);
-            }}
-            className="w-10 h-10 mx-auto flex items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
-            title="Cycle Theme"
-            style={{ color: "var(--ai-text)" }}
-          >
-            🎨
-          </button>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            <span
-              className="text-[10px] font-black uppercase tracking-wider pl-0.5"
-              style={{ color: "var(--ai-text-muted)" }}
-            >
-              Study Theme
-            </span>
-            <div className="flex items-center justify-between gap-2 bg-black/10 p-1 rounded-xl border" style={{ borderColor: "var(--ai-border)" }}>
-              {themesList.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => onChangeTheme(t.id)}
-                  className={`flex-1 py-1.5 rounded-lg flex items-center justify-center gap-1.5 text-xs font-bold transition duration-200 cursor-pointer
-                    ${activeTheme === t.id ? "bg-[var(--ai-accent)] text-white shadow-sm" : "hover:bg-[var(--ai-sidebar-hover)] opacity-70 hover:opacity-100"}`}
-                  style={{
-                    color: activeTheme === t.id ? "#ffffff" : "var(--ai-text)",
-                  }}
-                  title={t.name}
-                >
-                  <span>{t.id === "dark" ? "🌙" : "☀️"}</span>
-                  <span className="text-[9px] uppercase font-black tracking-wider">{t.id === "dark" ? "Dark" : "Light"}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

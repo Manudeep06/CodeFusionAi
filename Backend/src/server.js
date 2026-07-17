@@ -9,6 +9,7 @@ import { connectDB } from "./config/db.js";
 import { registerSocketHandlers } from "./controllers/socketController.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import roomRoutes from "./routes/roomRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
 
 
 dotenv.config();
@@ -16,7 +17,8 @@ dotenv.config();
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Connect to MongoDB
 connectDB();
@@ -44,6 +46,7 @@ registerSocketHandlers(io);
 app.use("/api/filesystem", fileSystemRoute);
 app.use("/api/execute", executeCodeRoute);
 app.use("/api/rooms", roomRoutes);
+app.use("/api/users", userRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend Running");

@@ -21,6 +21,30 @@ import DeleteModal from "../components/Room/DeleteModal";
 import UploadModal from "../components/Room/UploadModal";
 import CopyRoomId from "../components/Room/CopyRoomId";
 
+function CollaboratorAvatar({ photoURL, username }) {
+  const [imgError, setImgError] = useState(false);
+
+  if (photoURL && !imgError) {
+    return (
+      <img
+        src={photoURL}
+        alt={username || "User"}
+        className="w-7 h-7 rounded-full object-cover shrink-0"
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  return (
+    <div
+      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white"
+      style={{ background: "var(--vs-accent)" }}
+    >
+      {(username || "U")[0].toUpperCase()}
+    </div>
+  );
+}
+
 export default function Room() {
   const { roomId }  = useParams();
   const navigate    = useNavigate();
@@ -37,20 +61,7 @@ export default function Room() {
   const [language,        setLanguage]        = useState("javascript");
   const [users,           setUsers]           = useState([]);
   const [selectedCode,    setSelectedCode]    = useState("");
-  const [roomTheme,       setRoomTheme]       = useState(() => {
-    const saved = localStorage.getItem("codefusionai_theme");
-    return saved === "light" || saved === "notebook" ? "light" : "dark";
-  });
-
-  const handleRoomThemeChange = (newTheme) => {
-    setRoomTheme(newTheme);
-    localStorage.setItem("codefusionai_theme", newTheme);
-  };
-
-  const toggleRoomTheme = () => {
-    const nextTheme = roomTheme === "dark" ? "light" : "dark";
-    handleRoomThemeChange(nextTheme);
-  };
+  const roomTheme = "light";
   const [isRunning,       setIsRunning]       = useState(false);
   const [activePanel,     setActivePanel]     = useState("explorer"); // explorer | users | ai
 
@@ -216,8 +227,30 @@ export default function Room() {
     // Ensure the socket is connected
     if (!socket.connected) socket.connect();
 
-    const handleConnect = () => {
-      socket.emit("join-room", { roomId, username, photoURL, userId: user?.uid });
+    const handleConnect = async () => {
+      let currentPhoto = user?.photoURL || "";
+      let currentName = user?.displayName || user?.email?.split("@")[0] || "Developer";
+
+      try {
+        const baseUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+        if (user?.uid) {
+          const res = await fetch(`${baseUrl}/api/users/profile/${user.uid}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.photoURL) currentPhoto = data.photoURL;
+            if (data.displayName) currentName = data.displayName;
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching joining user profile from MongoDB:", err);
+      }
+
+      socket.emit("join-room", { 
+        roomId, 
+        username: currentName, 
+        photoURL: currentPhoto, 
+        userId: user?.uid 
+      });
     };
 
     if (socket.connected) {
@@ -864,20 +897,22 @@ export default function Room() {
           {/* Left – Brand */}
           <div className="flex items-center gap-2.5">
             <div
-              className="w-5 h-5 rounded flex items-center justify-center text-[11px] font-black shrink-0"
-              style={{ background: "linear-gradient(135deg, #58a6ff, #a371f7)", boxShadow: "0 0 10px #58a6ff40" }}
+              className="w-5 h-5 rounded flex items-center justify-center shrink-0 text-white"
+              style={{ background: "#000" }}
             >
-              ⚡
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m8 9 3 3-3 3m5 0h3M5 20h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
+              </svg>
             </div>
             <span
               className="text-[12px] font-bold tracking-tight"
-              style={{ background: "linear-gradient(90deg, #58a6ff, #a371f7)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}
+              style={{ color: "var(--vs-text)" }}
             >
               CodeFusionAI
             </span>
             <span
               className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full"
-              style={{ background: "#58a6ff12", color: "#58a6ff", border: "1px solid #58a6ff25" }}
+              style={{ background: "var(--vs-highlight)", color: "var(--vs-accent)", border: "1px solid var(--vs-border)" }}
             >
               Collaborative IDE
             </span>
@@ -967,23 +1002,7 @@ export default function Room() {
             {/* Spacer */}
             <div className="flex-1" />
 
-            {/* Theme Toggle (Light/Dark Mode) */}
-            <ActivityIcon 
-              title={roomTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"} 
-              active={false} 
-              onClick={toggleRoomTheme}
-            >
-              {roomTheme === "dark" ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="4" />
-                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-                </svg>
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
-                </svg>
-              )}
-            </ActivityIcon>
+
 
             {/* Leave Room */}
             <button
@@ -1106,18 +1125,13 @@ export default function Room() {
                         className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg"
                         style={{ background: VS.hover, border: `1px solid ${VS.border}` }}
                       >
-                        <div
-                          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                          style={{ background: "#58a6ff", color: "#fff", boxShadow: "0 0 8px #58a6ff30" }}
-                        >
-                          {(u.username || "U")[0].toUpperCase()}
-                        </div>
+                        <CollaboratorAvatar photoURL={u.photoURL} username={u.username} />
                         <div className="flex flex-col min-w-0 flex-1">
-                          <span className="text-[12px] truncate leading-tight" style={{ color: "#e6edf3" }}>{u.username || "User"}</span>
-                          <span className="text-[10px] truncate leading-tight mt-0.5" style={{ color: "#7d8590" }}>{u.activeFile || "Idle"}</span>
+                          <span className="text-[12px] truncate leading-tight font-bold" style={{ color: VS.text }}>{u.username || "User"}</span>
+                          <span className="text-[10px] truncate leading-tight mt-0.5" style={{ color: VS.textMuted }}>{u.activeFile || "Idle"}</span>
                         </div>
                         <div className="ml-auto flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb950" }} />
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--vs-green)" }} />
                         </div>
                       </div>
                     ))
@@ -1135,7 +1149,6 @@ export default function Room() {
                   onApplyCode={handleApplyCodeSuggestion}
                   selectedCode={selectedCode}
                   roomTheme={roomTheme}
-                  onThemeChange={handleRoomThemeChange}
                 />
               )}
 
@@ -1146,13 +1159,13 @@ export default function Room() {
                 className="shrink-0 flex items-center justify-center"
                 style={{
                   width: "5px",
-                  background: "#21262d",
+                  background: VS.border,
                   cursor: "ew-resize",
                   position: "relative",
                   zIndex: 10,
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "#58a6ff"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "#21262d"}
+                onMouseEnter={(e) => e.currentTarget.style.background = VS.accent}
+                onMouseLeave={(e) => e.currentTarget.style.background = VS.border}
                 title="Drag to resize sidebar"
               >
                 <div style={{ height: "40px", width: "2px", borderRadius: "1px", background: "inherit", opacity: 0.4 }} />
@@ -1165,17 +1178,19 @@ export default function Room() {
 
             {openTabs.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center select-none" style={{ background: VS.bg }}>
-                <div className="w-20 h-20 mb-6 rounded-2xl flex items-center justify-center text-4xl" style={{ background: VS.input, border: `1px solid ${VS.border}`, boxShadow: "0 0 40px var(--vs-highlight)", animation: "pulse 3s infinite alternate" }}>
-                  ⚡
+                <div className="w-20 h-20 mb-6 rounded-2xl flex items-center justify-center text-white shrink-0" style={{ background: "#000" }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m8 9 3 3-3 3m5 0h3M5 20h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
+                  </svg>
                 </div>
                 <h2 className="text-xl font-bold mb-2 tracking-tight" style={{ color: VS.text }}>CodeFusionAI Workspace</h2>
                 <p className="text-[13px] mb-8" style={{ color: VS.textMuted }}>Select a file from the explorer or create a new one to begin.</p>
                 
                 <div className="flex gap-4">
-                  <button onClick={() => setNewItemModal({ parentPath: "", isFolder: false })} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-200 hover:scale-105" style={{ background: "#1f6feb", color: "#fff", boxShadow: "0 8px 24px #1f6feb40" }}>
+                  <button onClick={() => setNewItemModal({ parentPath: "", isFolder: false })} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-150 cursor-pointer" style={{ background: VS.accent, color: "#fff" }}>
                     Create File
                   </button>
-                  <button onClick={() => fileInputRef.current?.click()} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-200 hover:scale-105" style={{ background: VS.input, color: VS.text, border: `1px solid ${VS.border}` }} onMouseEnter={(e) => e.currentTarget.style.borderColor=VS.accent} onMouseLeave={(e) => e.currentTarget.style.borderColor=VS.border}>
+                  <button onClick={() => fileInputRef.current?.click()} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-150 cursor-pointer" style={{ background: VS.input, color: VS.text, border: `1px solid ${VS.border}` }} onMouseEnter={(e) => e.currentTarget.style.borderColor=VS.accent} onMouseLeave={(e) => e.currentTarget.style.borderColor=VS.border}>
                     Upload Project
                   </button>
                 </div>
@@ -1359,12 +1374,12 @@ export default function Room() {
                 className="flex items-center justify-center z-10"
                 style={{
                   width: "5px",
-                  background: "#21262d",
+                  background: VS.border,
                   cursor: "ew-resize",
                   position: "relative",
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "#58a6ff"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "#21262d"}
+                onMouseEnter={(e) => e.currentTarget.style.background = VS.accent}
+                onMouseLeave={(e) => e.currentTarget.style.background = VS.border}
                 title="Drag to resize preview panel"
               >
                 <div style={{ width: "2px", height: "40px", borderRadius: "1px", background: "inherit", opacity: 0.4 }} />

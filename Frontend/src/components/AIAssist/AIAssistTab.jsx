@@ -32,24 +32,35 @@ export default function AIAssistTab() {
 
   // Track active chat ID
   const [activeChatId, setActiveChatId] = useState(() => {
-    const lastActive = localStorage.getItem("codefusionai_active_chat_id");
-    if (lastActive) {
-      return lastActive;
-    }
     const saved = localStorage.getItem("codefusionai_chats");
+    let parsedChats = [];
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.length > 0) return parsed[0].id;
-      } catch (e) {}
+        parsedChats = JSON.parse(saved);
+      } catch (e) {
+        console.error("Error parsing chats history:", e);
+      }
     }
-    return "chat_default";
-  });
-
-  // Track theme preference
-  const [activeTheme, setActiveTheme] = useState(() => {
-    const saved = localStorage.getItem("codefusionai_theme");
-    return saved === "light" || saved === "notebook" ? "light" : "dark";
+    if (!Array.isArray(parsedChats) || parsedChats.length === 0) {
+      parsedChats = [
+        {
+          id: "chat_default",
+          title: "Welcome Copilot",
+          messages: [
+            {
+              role: "assistant",
+              text: "Welcome to CodeFusionAI Copilot Hub! Ask me any programming question, request templates, or explore details about the system's architecture."
+            }
+          ],
+          model: "Gemini-2.5-Flash"
+        }
+      ];
+    }
+    const lastActive = localStorage.getItem("codefusionai_active_chat_id");
+    if (lastActive && parsedChats.some((c) => c.id === lastActive)) {
+      return lastActive;
+    }
+    return parsedChats[0].id;
   });
 
   const [loading, setLoading] = useState(false);
@@ -139,11 +150,6 @@ export default function AIAssistTab() {
     localStorage.setItem("codefusionai_chats", JSON.stringify(updatedChats));
   };
 
-  const handleThemeChange = (theme) => {
-    setActiveTheme(theme);
-    localStorage.setItem("codefusionai_theme", theme);
-  };
-
   const handleSendMessage = async (text) => {
     const chat = chats.find((c) => c.id === activeChatId);
     if (!chat || loading) return;
@@ -226,48 +232,27 @@ export default function AIAssistTab() {
   const activeChat = chats.find((c) => c.id === activeChatId);
 
   return (
-    <div className={`ai-theme-wrapper theme-${activeTheme} max-w-5xl mx-auto px-1 sm:px-4`}>
+    <div className="ai-theme-wrapper max-w-5xl mx-auto px-1 sm:px-4">
       {/* Dynamic CSS Stylesheet Injector for Themes */}
       <style>{`
-        /* --- Themes Definitions --- */
-        .theme-dark {
-          --ai-bg: rgba(13, 10, 28, 0.7);
-          --ai-sidebar-bg: rgba(20, 16, 42, 0.85);
-          --ai-text: #f8fafc;
-          --ai-text-muted: #94a3b8;
-          --ai-accent: #8b5cf6;
-          --ai-accent-hover: #7c3aed;
-          --ai-border: rgba(255, 255, 255, 0.08);
-          --ai-msg-user: #8b5cf6;
-          --ai-msg-user-text: #ffffff;
-          --ai-msg-ai: rgba(255, 255, 255, 0.035);
-          --ai-msg-ai-text: #e2e8f0;
-          --ai-input-bg: rgba(0, 0, 0, 0.35);
-          --ai-sidebar-hover: rgba(255, 255, 255, 0.05);
-          --ai-font: 'Inter', system-ui, sans-serif;
-          --ai-card-shadow: 0 12px 48px rgba(0,0,0,0.6);
-          --ai-header-bg: rgba(0, 0, 0, 0.05);
-          --ai-input-panel-bg: rgba(0, 0, 0, 0.1);
-        }
-
-        .theme-light {
-          --ai-bg: #faf9f6;
-          --ai-sidebar-bg: #f4f3ee;
-          --ai-text: #0f172a;
-          --ai-text-muted: #475569;
-          --ai-accent: #4f46e5;
-          --ai-accent-hover: #3730a3;
-          --ai-border: rgba(0, 0, 0, 0.07);
-          --ai-msg-user: linear-gradient(135deg, #6366f1, #4f46e5);
-          --ai-msg-user-text: #ffffff;
-          --ai-msg-ai: #ffffff;
-          --ai-msg-ai-text: #0f172a;
-          --ai-input-bg: #ffffff;
-          --ai-sidebar-hover: rgba(0, 0, 0, 0.04);
-          --ai-font: 'Outfit', 'Inter', system-ui, sans-serif;
-          --ai-card-shadow: 0 20px 40px rgba(15, 23, 42, 0.06);
-          --ai-header-bg: rgba(0, 0, 0, 0.02);
-          --ai-input-panel-bg: transparent;
+        .ai-theme-wrapper {
+          --ai-bg: var(--color-paper);
+          --ai-sidebar-bg: var(--color-paper-muted);
+          --ai-text: var(--color-ink);
+          --ai-text-muted: var(--color-ink-soft);
+          --ai-accent: var(--color-accent);
+          --ai-accent-hover: var(--color-accent-hover);
+          --ai-border: var(--color-rule);
+          --ai-msg-user: var(--color-accent);
+          --ai-msg-user-text: var(--color-accent-ink);
+          --ai-msg-ai: var(--color-paper-raised);
+          --ai-msg-ai-text: var(--color-ink);
+          --ai-input-bg: var(--color-paper-raised);
+          --ai-sidebar-hover: oklch(0.935 0.005 240);
+          --ai-font: var(--font-sans, system-ui, sans-serif);
+          --ai-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+          --ai-header-bg: var(--color-paper-muted);
+          --ai-input-panel-bg: var(--color-paper-muted);
         }
 
         /* --- Scrollbar styling overrides --- */
@@ -296,30 +281,29 @@ export default function AIAssistTab() {
           background-color: var(--ai-sidebar-hover);
         }
 
-        /* --- Notebook Ruled Lines Pattern (Bullet Journal dot-grid style in Light Mode) --- */
-        .theme-light .bg-notebook-pattern {
-          background-color: #faf9f6 !important;
-          background-image: radial-gradient(rgba(0, 0, 0, 0.04) 1.2px, transparent 1.2px) !important;
+        /* --- Notebook Ruled Lines Pattern --- */
+        .ai-theme-wrapper .bg-notebook-pattern {
+          background-color: var(--ai-bg) !important;
+          background-image: radial-gradient(rgba(0, 0, 0, 0.03) 1.2px, transparent 1.2px) !important;
           background-size: 20px 20px !important;
           background-attachment: local;
         }
 
-        /* --- Vite Card Theme Container Overrides --- */
-        .ai-theme-wrapper:not(.theme-dark) > div {
+        /* --- Card overrides --- */
+        .ai-theme-wrapper > div {
           background: var(--ai-bg) !important;
           border-color: var(--ai-border) !important;
           box-shadow: var(--ai-card-shadow) !important;
           backdrop-filter: none !important;
         }
         
-        .ai-theme-wrapper:not(.theme-dark) > div > div.absolute {
+        .ai-theme-wrapper > div > div.absolute {
           display: none !important;
         }
       `}</style>
 
       <Card
-        accentColor={activeTheme === "dark" ? "purple" : "none"}
-        className="flex h-[620px] !p-0 overflow-hidden shadow-2xl transition-all duration-300"
+        className="flex h-[620px] !p-0 overflow-hidden transition-all duration-300"
         noPad
       >
         <ChatHistorySidebar
@@ -329,8 +313,6 @@ export default function AIAssistTab() {
           onNewChat={handleNewChat}
           onDeleteChat={handleDeleteChat}
           onRenameChat={handleRenameChat}
-          activeTheme={activeTheme}
-          onChangeTheme={handleThemeChange}
         />
         
         <ChatWindow
