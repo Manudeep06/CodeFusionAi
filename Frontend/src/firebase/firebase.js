@@ -8,7 +8,7 @@ import {
   signOut,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  onAuthStateChanged,
+  onAuthStateChanged as firebaseOnAuthStateChanged,
 } from "firebase/auth";
 
 const firebaseConfig = {
@@ -21,49 +21,68 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+const isFirebaseConfigured = Boolean(
+  firebaseConfig.apiKey &&
+  firebaseConfig.authDomain &&
+  firebaseConfig.projectId &&
+  firebaseConfig.appId,
+);
 
-// Initialize Authentication
-export const auth = getAuth(app);
+const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
+export const auth = app ? getAuth(app) : null;
+export const provider = auth ? new GoogleAuthProvider() : null;
 
-// Google Provider
-export const provider = new GoogleAuthProvider();
-provider.setCustomParameters({
-  prompt: "select_account",
-});
-provider.addScope("email");
-provider.addScope("profile");
+if (provider) {
+  provider.setCustomParameters({ prompt: "select_account" });
+  provider.addScope("email");
+  provider.addScope("profile");
+}
+
+const firebaseUnavailable = () => {
+  throw new Error("Firebase is not configured for this local copy. Add the VITE_FIREBASE_* values in .env.local, then restart the frontend.");
+};
 
 // Google Sign In — uses popup (works on localhost & all domains reliably)
 export const signInWithGoogle = async () => {
+  if (!auth || !provider) firebaseUnavailable();
   const result = await signInWithPopup(auth, provider);
   return result;
 };
 
 // Google Sign In Redirect fallback
 export const signInWithGoogleRedirect = async () => {
+  if (!auth || !provider) firebaseUnavailable();
   return await signInWithRedirect(auth, provider);
 };
 
 // No-op kept for backwards compat — popup flow doesn't need a redirect handler
 export const handleGoogleRedirect = async () => {
+  if (!auth) firebaseUnavailable();
   return await getRedirectResult(auth);
 };
 
 // Logout
 export const logout = async () => {
+  if (!auth) return;
   return await signOut(auth);
 };
 
 // Register
 export const registerUser = async (email, password) => {
+  if (!auth) firebaseUnavailable();
   return await createUserWithEmailAndPassword(auth, email, password);
 };
 
 // Login
 export const loginUser = async (email, password) => {
+  if (!auth) firebaseUnavailable();
   return await signInWithEmailAndPassword(auth, email, password);
 };
 
-export { onAuthStateChanged };
+export const onAuthStateChanged = (authInstance, callback) => {
+  if (!authInstance || !auth) {
+    queueMicrotask(() => callback(null));
+    return () => {};
+  }
+  return firebaseOnAuthStateChanged(authInstance, callback);
+};
