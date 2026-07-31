@@ -267,7 +267,7 @@ export default function SessionsTab({ handleJoinRoomShortcut, onCreateRoomClick 
                 <div className="flex items-start justify-between mb-4">
                   {/* Template badge */}
                   <span className="text-[9px] font-bold uppercase tracking-wider border border-[var(--color-rule)] bg-[var(--color-paper-muted)] text-[var(--color-ink-soft)] px-2 py-0.5 rounded">
-                    {s.template.toUpperCase()}
+                    {(s.template || "react").toUpperCase()}
                   </span>
                   
                   {/* Status badge */}

@@ -54,7 +54,7 @@ export const getUserSessions = async (userId) => {
       { ownerId: userId },
       { participants: userId }
     ]
-  }).sort({ lastActive: -1 });
+  }).select("-files").sort({ lastActive: -1 });
 };
 
 /**
@@ -128,6 +128,6 @@ export const deleteRoom = async (roomId, userId) => {
  * @returns {Promise<Array>} List of public rooms
  */
 export const getPublicRooms = async () => {
-  return await Room.find({ accessType: "public" }).sort({ lastActive: -1 });
+  return await Room.find({ accessType: "public" }).select("-files").sort({ lastActive: -1 });
 };
 

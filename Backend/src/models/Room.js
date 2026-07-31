@@ -15,5 +15,10 @@ const RoomSchema = new mongoose.Schema({
   participants: [{ type: String }] // Array of Firebase UIDs of users who joined
 });
 
+// Create indexes to optimize session listing queries
+RoomSchema.index({ ownerId: 1, lastActive: -1 });
+RoomSchema.index({ participants: 1, lastActive: -1 });
+RoomSchema.index({ accessType: 1, lastActive: -1 });
+
 export default mongoose.model('Room', RoomSchema);
 
