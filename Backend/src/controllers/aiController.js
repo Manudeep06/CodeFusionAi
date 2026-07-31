@@ -1,29 +1,59 @@
-import { generateResponse } from "../services/geminiService.js";
+import asyncHandler from "../utils/asyncHandler.js";
+import {
+  generateResponse,
+  reviewCode,
+  explainCode,
+  optimizeCode,
+} from "../services/geminiService.js";
 
-export const chatWithAI = async (req, res) => {
-  try {
-    const { message } = req.body;
+/**
+ * AI Controller
+ *
+ * Thin HTTP layer over geminiService.
+ * Each handler extracts request data, delegates to the service,
+ * and returns a structured response.
+ */
 
-    if (!message) {
-      return res.status(400).json({
-        success: false,
-        message: "Message is required",
-      });
-    }
+/**
+ * POST /api/ai/chat
+ * General-purpose AI chat.
+ * Body: { message: string, history?: Array<{role: string, content: string}> }
+ */
+export const chatWithAI = asyncHandler(async (req, res) => {
+  const { message, history = [] } = req.body;
+  const reply = await generateResponse(message, history);
+  res.status(200).json({ success: true, reply });
+});
 
-    const reply = await generateResponse(message);
+/**
+ * POST /api/ai/review
+ * Perform a structured code review.
+ * Body: { code: string, language?: string }
+ */
+export const reviewCodeHandler = asyncHandler(async (req, res) => {
+  const { code, language = "" } = req.body;
+  const review = await reviewCode(code, language);
+  res.status(200).json({ success: true, review });
+});
 
-    return res.status(200).json({
-      success: true,
-      reply,
-    });
+/**
+ * POST /api/ai/explain
+ * Explain what a piece of code does.
+ * Body: { code: string, language?: string }
+ */
+export const explainCodeHandler = asyncHandler(async (req, res) => {
+  const { code, language = "" } = req.body;
+  const explanation = await explainCode(code, language);
+  res.status(200).json({ success: true, explanation });
+});
 
-  } catch (error) {
-    console.error("AI Controller Error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-    });
-  }
-};
+/**
+ * POST /api/ai/optimize
+ * Suggest and return an optimized version of the code.
+ * Body: { code: string, language?: string }
+ */
+export const optimizeCodeHandler = asyncHandler(async (req, res) => {
+  const { code, language = "" } = req.body;
+  const optimization = await optimizeCode(code, language);
+  res.status(200).json({ success: true, optimization });
+});

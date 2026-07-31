@@ -1,75 +1,49 @@
 import express from "express";
-import { getUserSessions, closeRoom, resumeRoom, deleteRoom, getPublicRooms } from "../services/roomService.js";
+import validate from "../middleware/validate.js";
+import {
+  getPublicRooms,
+  getUserRooms,
+  closeRoom,
+  resumeRoom,
+  deleteRoom,
+} from "../controllers/room.controller.js";
 
 const router = express.Router();
 
-// Get all public rooms
-router.get("/public", async (req, res) => {
-  try {
-    const rooms = await getPublicRooms();
-    res.json(rooms);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+/**
+ * Room Routes
+ * Base path: /api/rooms
+ */
 
-// Get all rooms a user created or participated in
-router.get("/user/:userId", async (req, res) => {
-  try {
-    const { userId } = req.params;
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
-    }
-    const sessions = await getUserSessions(userId);
-    res.json(sessions);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// GET /api/rooms/public — List all public rooms
+router.get("/public", getPublicRooms);
 
-// Close a room (Requires { userId } in request body for ownership checks)
-router.post("/:roomId/close", async (req, res) => {
-  try {
-    const { roomId } = req.params;
-    const { userId } = req.body;
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required in the body" });
-    }
-    const room = await closeRoom(roomId, userId);
-    res.json({ success: true, message: "Room closed successfully", room });
-  } catch (error) {
-    res.status(403).json({ error: error.message });
-  }
-});
+// GET /api/rooms/user/:userId — List rooms owned or joined by a user
+router.get(
+  "/user/:userId",
+  validate({ params: { userId: "required|string" } }),
+  getUserRooms
+);
 
-// Resume a closed room (Requires { userId } in request body for ownership checks)
-router.post("/:roomId/resume", async (req, res) => {
-  try {
-    const { roomId } = req.params;
-    const { userId } = req.body;
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required in the body" });
-    }
-    const room = await resumeRoom(roomId, userId);
-    res.json({ success: true, message: "Room resumed successfully", room });
-  } catch (error) {
-    res.status(403).json({ error: error.message });
-  }
-});
+// POST /api/rooms/:roomId/close — Close a room (owner only)
+router.post(
+  "/:roomId/close",
+  validate({ body: { userId: "required|string" } }),
+  closeRoom
+);
 
-// Delete a room permanently (Requires { userId } in request body for ownership checks)
-router.delete("/:roomId", async (req, res) => {
-  try {
-    const { roomId } = req.params;
-    const { userId } = req.body;
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required in the body" });
-    }
-    await deleteRoom(roomId, userId);
-    res.json({ success: true, message: "Room deleted permanently" });
-  } catch (error) {
-    res.status(403).json({ error: error.message });
-  }
-});
+// POST /api/rooms/:roomId/resume — Reopen a closed room (owner only)
+router.post(
+  "/:roomId/resume",
+  validate({ body: { userId: "required|string" } }),
+  resumeRoom
+);
+
+// DELETE /api/rooms/:roomId — Permanently delete a room (owner only)
+router.delete(
+  "/:roomId",
+  validate({ body: { userId: "required|string" } }),
+  deleteRoom
+);
 
 export default router;

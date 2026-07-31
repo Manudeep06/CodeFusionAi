@@ -1,133 +1,162 @@
 import Room from "../models/Room.js";
-import { syncFilesToDisk } from "./fileService.js";
+import AppError from "../utils/AppError.js";
+import { initializeWorkspaceFiles } from "./workspace.service.js";
 
 const INITIAL_WORKSPACE = JSON.stringify([]);
 
 /**
- * Find an existing room or create a new one with the given attributes
+ * Room Service
+ *
+ * Handles all room lifecycle operations: creation, retrieval, closing, deletion.
+ * Workspace-level operations (load/persist files) are delegated to workspace.service.js.
+ *
+ * All functions throw AppError for expected failures so controllers can
+ * forward them to the centralized error handler without their own try/catch.
+ */
+
+/**
+ * Find an existing room or create a new one.
+ * On creation, seeds the workspace with template files.
+ *
  * @param {Object} params
  * @param {string} params.roomId
  * @param {string} [params.roomName]
  * @param {string} [params.ownerId]
  * @param {string} [params.ownerName]
  * @param {string} [params.template]
- * @param {string} [params.files]
- * @returns {Promise<Object>} The room document
+ * @param {Array|string|null} [params.files] - Initial template files
+ * @param {string} [params.accessType]
+ * @param {string} [params.description]
+ * @returns {Promise<Object>} The room Mongoose document
  */
-export const getOrCreateRoom = async ({ roomId, roomName = "", ownerId = "", ownerName = "Developer", template = "react", files = null, accessType = "private", description = "" }) => {
+export const getOrCreateRoom = async ({
+  roomId,
+  roomName = "",
+  ownerId = "",
+  ownerName = "Developer",
+  template = "react",
+  files = null,
+  accessType = "private",
+  description = "",
+}) => {
   let room = await Room.findOne({ roomId });
-  if (!room) {
+  const isNew = !room;
+
+  if (isNew) {
     room = await Room.create({
       roomId,
       name: roomName || "Untitled Project",
-      ownerId: ownerId || "",
+      ownerId: ownerId || "default_user",
       ownerName: ownerName || "Developer",
       template: template || "react",
-      files: files || INITIAL_WORKSPACE,
       status: "active",
       accessType: accessType || "private",
-      description: description || ""
+      description: description || "",
     });
+
+    // Populate S3 + MongoDB File metadata + Redis cache on first creation
+    await initializeWorkspaceFiles(roomId, ownerId || "default_user", files || INITIAL_WORKSPACE);
   }
-  syncFilesToDisk(roomId, room.files);
+
   return room;
 };
 
 /**
- * Update the room files and synchronize them to disk
- * @param {string} roomId 
- * @param {string} files 
- */
-export const updateRoomFiles = async (roomId, files) => {
-  await Room.updateOne({ roomId }, { files, lastActive: Date.now() });
-  syncFilesToDisk(roomId, files);
-};
-
-/**
- * Fetch all rooms that a user owns OR joined as a participant
+ * Fetch all rooms a user owns or has participated in.
+ *
  * @param {string} userId
- * @returns {Promise<Array>} List of rooms
+ * @returns {Promise<Array>} Array of room documents (files field excluded)
  */
 export const getUserSessions = async (userId) => {
   return await Room.find({
-    $or: [
-      { ownerId: userId },
-      { participants: userId }
-    ]
-  }).select("-files").sort({ lastActive: -1 });
+    $or: [{ ownerId: userId }, { participants: userId }],
+  })
+    .select("-files")
+    .sort({ lastActive: -1 });
 };
 
 /**
- * Close a room (Only the Owner can do this)
+ * Fetch all publicly accessible rooms.
+ *
+ * @returns {Promise<Array>}
+ */
+export const getPublicRooms = async () => {
+  return await Room.find({ accessType: "public" })
+    .select("-files")
+    .sort({ lastActive: -1 });
+};
+
+/**
+ * Register a user as a participant in a room (idempotent — $addToSet).
+ *
  * @param {string} roomId
  * @param {string} userId
- * @returns {Promise<Object>} The updated room document
+ */
+export const addParticipant = async (roomId, userId) => {
+  if (!userId) return;
+  await Room.updateOne({ roomId }, { $addToSet: { participants: userId } });
+};
+
+/**
+ * Close a room (owner only). Closed rooms cannot be joined.
+ *
+ * @param {string} roomId
+ * @param {string} userId
+ * @returns {Promise<Object>} Updated room document
+ * @throws {AppError} 404 if room not found, 403 if not the owner
  */
 export const closeRoom = async (roomId, userId) => {
   const room = await Room.findOne({ roomId });
-  if (!room) throw new Error("Room not found");
-  
+  if (!room) throw new AppError("Room not found", 404);
   if (room.ownerId !== userId) {
-    throw new Error("Unauthorized: Only the room owner can close this session.");
+    throw new AppError("Unauthorized: Only the room owner can close this session.", 403);
   }
-  
   room.status = "closed";
   return await room.save();
 };
 
 /**
- * Resume/Reopen a room (Only the Owner can do this)
+ * Reopen a previously closed room (owner only).
+ *
  * @param {string} roomId
  * @param {string} userId
- * @returns {Promise<Object>} The updated room document
+ * @returns {Promise<Object>} Updated room document
+ * @throws {AppError} 404 if room not found, 403 if not the owner
  */
 export const resumeRoom = async (roomId, userId) => {
   const room = await Room.findOne({ roomId });
-  if (!room) throw new Error("Room not found");
-  
+  if (!room) throw new AppError("Room not found", 404);
   if (room.ownerId !== userId) {
-    throw new Error("Unauthorized: Only the room owner can reopen this session.");
+    throw new AppError("Unauthorized: Only the room owner can reopen this session.", 403);
   }
-  
   room.status = "active";
   room.lastActive = Date.now();
   return await room.save();
 };
 
 /**
- * Register a user as a participant in a room if they are not already registered
+ * Permanently delete a room from MongoDB (owner only).
+ * NOTE: This does NOT delete S3 files — call workspace.service separately if needed.
+ *
  * @param {string} roomId
  * @param {string} userId
- */
-export const addParticipant = async (roomId, userId) => {
-  if (!userId) return;
-  await Room.updateOne(
-    { roomId },
-    { $addToSet: { participants: userId } }
-  );
-};
-
-/**
- * Permanently delete a room (Only the Owner can do this)
- * @param {string} roomId
- * @param {string} userId
+ * @throws {AppError} 404 if room not found, 403 if not the owner
  */
 export const deleteRoom = async (roomId, userId) => {
   const room = await Room.findOne({ roomId });
-  if (!room) throw new Error("Room not found");
-  
+  if (!room) throw new AppError("Room not found", 404);
   if (room.ownerId !== userId) {
-    throw new Error("Unauthorized: Only the room owner can permanently delete this session.");
+    throw new AppError("Unauthorized: Only the room owner can delete this session.", 403);
   }
-  
   return await Room.deleteOne({ roomId });
 };
 
 /**
- * Fetch all public rooms
- * @returns {Promise<Array>} List of public rooms
+ * Get a single room by its roomId.
+ *
+ * @param {string} roomId
+ * @returns {Promise<Object|null>}
  */
-export const getPublicRooms = async () => {
-  return await Room.find({ accessType: "public" }).select("-files").sort({ lastActive: -1 });
+export const getRoomById = async (roomId) => {
+  return await Room.findOne({ roomId });
 };
-

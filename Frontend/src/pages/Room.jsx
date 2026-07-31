@@ -285,7 +285,11 @@ export default function Room() {
               setCode(hit.content || "");
               setLanguage(hit.language || getLangByExt(hit.path)?.id || "javascript");
             } else {
-              const first = parsed.find((f) => !f.isFolder);
+              // Try to find App.jsx or src/App.jsx first, then fallback to App.js or main.js, and finally any file that is not a folder
+              const first = parsed.find((f) => !f.isFolder && (f.path === "src/App.jsx" || f.path === "App.jsx"))
+                            || parsed.find((f) => !f.isFolder && f.path.toLowerCase().endsWith("app.jsx"))
+                            || parsed.find((f) => !f.isFolder && (f.path === "src/App.js" || f.path === "App.js" || f.path === "src/index.js" || f.path === "src/main.jsx"))
+                            || parsed.find((f) => !f.isFolder);
               if (first) {
                 setTimeout(() => {
                   setActiveFile(first.path);

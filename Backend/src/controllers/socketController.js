@@ -1,15 +1,37 @@
-import fs from "fs";
-import path from "path";
-import os from "os";
-import Room from "../models/Room.js";
-import { getOrCreateRoom, updateRoomFiles, addParticipant } from "../services/roomService.js";
-
-const INITIAL_WORKSPACE = JSON.stringify([]);
+import {
+  getOrCreateRoom,
+  addParticipant,
+  closeRoom,
+  getRoomById,
+} from "../services/roomService.js";
+import { loadWorkspace, persistWorkspaceToS3 } from "../services/workspace.service.js";
+import {
+  cacheWorkspace,
+  markRoomDirty,
+  clearRoomDirty,
+} from "../services/redis.service.js";
 
 /**
- * Fetch sockets in a room and broadcast user list to everyone in that room
- * @param {Object} io - Socket.io Server instance
- * @param {string} roomId 
+ * Socket Controller
+ *
+ * Registers all Socket.IO event handlers.
+ * This file ONLY handles socket event logic — no MongoDB queries, no S3 calls,
+ * no filesystem operations, no business logic. All of that is delegated to services.
+ *
+ * Fixed issues from the original socketController.js:
+ * - ❌ Removed direct Room.findOne() / room.save() calls (now use roomService)
+ * - ❌ Removed Desktop folder creation (os.homedir() + "/Desktop/...") — server bug
+ * - ❌ Removed fs.rmSync local workspace cleanup (not server's responsibility)
+ * - ❌ Removed startWorkspaceSyncInterval() call (moved to server.js startup)
+ * - ✅ All room operations go through roomService
+ * - ✅ All workspace operations go through workspace.service
+ * - ✅ All cache operations go through redis.service
+ */
+
+/**
+ * Broadcast the current list of connected users in a room to all members.
+ * @param {import('socket.io').Server} io
+ * @param {string} roomId
  */
 const broadcastRoomUsers = async (io, roomId) => {
   try {
@@ -22,68 +44,38 @@ const broadcastRoomUsers = async (io, roomId) => {
     }));
     io.to(roomId).emit("room-users", usersList);
   } catch (err) {
-    console.error("Error broadcasting room users:", err);
+    console.error("[Socket] Error broadcasting room users:", err.message);
   }
 };
 
 /**
- * Register all Socket.io event listeners
- * @param {Object} io - Socket.io Server instance
+ * Register all Socket.IO event listeners on the server instance.
+ * @param {import('socket.io').Server} io
  */
 export const registerSocketHandlers = (io) => {
   io.on("connection", (socket) => {
-
     socket.emit("welcome", "Socket Connected Successfully");
 
-    // Create Room Event
+    // ── Create Room ────────────────────────────────────────────────────────
     socket.on("create-room", async (data) => {
-      let roomId = "";
-      let username = "Developer";
-      let photoURL = "";
-      let roomName = "";
-      let ownerId = "";
-      let template = "react";
-      let files = null;
-      let accessType = "private";
-      let description = "";
-
-      if (typeof data === "object" && data !== null) {
-        roomId = data.roomId;
-        username = data.username || "Developer";
-        photoURL = data.photoURL || "";
-        roomName = data.roomName || "";
-        ownerId = data.ownerId || "";
-        template = data.template || "react";
-        files = data.files || null;
-        accessType = data.accessType || "private";
-        description = data.description || "";
-      } else {
-        roomId = data;
-      }
-
-      if (roomName) {
-        try {
-          const desktopPath = path.join(os.homedir(), "Desktop");
-          const workspaceDir = path.join(desktopPath, "CodeFusion Workspace");
-          
-          if (!fs.existsSync(workspaceDir)) {
-            fs.mkdirSync(workspaceDir, { recursive: true });
-          }
-          const roomFolder = path.join(workspaceDir, roomName);
-          if (!fs.existsSync(roomFolder)) {
-            fs.mkdirSync(roomFolder, { recursive: true });
-          }
-        } catch (err) {
-          console.error("Error creating room folder:", err);
-        }
-      }
+      const {
+        roomId,
+        username = "Developer",
+        photoURL = "",
+        roomName = "",
+        ownerId = "",
+        template = "react",
+        files = null,
+        accessType = "private",
+        description = "",
+      } = typeof data === "object" && data !== null ? data : { roomId: data };
 
       socket.join(roomId);
       socket.username = username;
       socket.photoURL = photoURL;
       socket.roomId = roomId;
 
-      console.log(`${username} (${socket.id}) created room ${roomId}`);
+      console.log(`[Socket] ${username} (${socket.id}) created room ${roomId}`);
 
       try {
         await getOrCreateRoom({
@@ -94,44 +86,39 @@ export const registerSocketHandlers = (io) => {
           template,
           files,
           accessType,
-          description
+          description,
         });
       } catch (err) {
-        console.error("MongoDB create room error:", err);
+        console.error("[Socket] Error creating room in DB:", err.message);
       }
 
       await broadcastRoomUsers(io, roomId);
       socket.emit("room-created", roomId);
     });
 
-    // Join Room Event
+    // ── Join Room ──────────────────────────────────────────────────────────
     socket.on("join-room", async (data) => {
-      let roomId = "";
-      let username = "Developer";
-      let photoURL = "";
-      let userId = "";
-
-      if (typeof data === "object" && data !== null) {
-        roomId = data.roomId;
-        username = data.username || "Developer";
-        photoURL = data.photoURL || "";
-        userId = data.userId || "";
-      } else {
-        roomId = data;
-      }
+      const {
+        roomId,
+        username = "Developer",
+        photoURL = "",
+        userId = "",
+      } = typeof data === "object" && data !== null ? data : { roomId: data };
 
       try {
-        const room = await Room.findOne({ roomId });
+        const room = await getRoomById(roomId);
+
         if (!room) {
           return socket.emit("join-error", "Room not found");
         }
 
-        // Restriction check: closed room
         if (room.status === "closed") {
-          return socket.emit("join-error", "Access Denied: This session has been closed. Please reopen it from the dashboard before joining.");
+          return socket.emit(
+            "join-error",
+            "Access Denied: This session has been closed. Please reopen it from the dashboard before joining."
+          );
         }
 
-        // Register participant in the DB
         await addParticipant(roomId, userId);
 
         socket.join(roomId);
@@ -139,9 +126,11 @@ export const registerSocketHandlers = (io) => {
         socket.photoURL = photoURL;
         socket.roomId = roomId;
 
-        console.log(`${username} (${socket.id}) joined room ${roomId}`);
-        socket.emit("receive-code", room.files);
-        
+        console.log(`[Socket] ${username} (${socket.id}) joined room ${roomId}`);
+
+        const roomFiles = await loadWorkspace(roomId);
+        socket.emit("receive-code", JSON.stringify(roomFiles));
+
         await broadcastRoomUsers(io, roomId);
 
         socket.to(roomId).emit("user-joined", {
@@ -152,52 +141,84 @@ export const registerSocketHandlers = (io) => {
 
         socket.emit("room-joined", roomId);
       } catch (err) {
-        console.error("MongoDB join room error:", err);
+        console.error("[Socket] Error joining room:", err.message);
         socket.emit("join-error", "An error occurred while joining the room.");
       }
     });
 
-    // Real-Time Code Synchronization Event
+    // ── Real-Time Code Change ──────────────────────────────────────────────
+    // Caches the latest workspace state in Redis and marks the room dirty.
     socket.on("code-change", async ({ roomId, code }) => {
       try {
-        await updateRoomFiles(roomId, code);
+        await cacheWorkspace(roomId, code);
+        await markRoomDirty(roomId);
       } catch (err) {
-        console.error("MongoDB code change error:", err);
+        console.error("[Socket] Redis code-change caching error:", err.message);
       }
       socket.to(roomId).emit("receive-code", code);
     });
 
-    // Sync Workspace to Disk (No broadcast) Event
+    // ── Sync Workspace (no broadcast) ──────────────────────────────────────
+    // Used for silent sync events (e.g., on reconnect or focus change).
     socket.on("sync-workspace", async ({ code }) => {
-      if (socket.roomId) {
-        try {
-          await updateRoomFiles(socket.roomId, code);
-        } catch (err) {
-          console.error("MongoDB sync workspace error:", err);
-        }
+      if (!socket.roomId) return;
+      try {
+        await cacheWorkspace(socket.roomId, code);
+        await markRoomDirty(socket.roomId);
+      } catch (err) {
+        console.error("[Socket] Redis sync-workspace caching error:", err.message);
       }
     });
 
-    // Real-Time Presence Event
+    // ── Manual Save (force flush Redis → S3) ──────────────────────────────
+    socket.on("save-workspace", async () => {
+      if (!socket.roomId) return;
+      try {
+        console.log(`[Socket] Manual save triggered for room ${socket.roomId}`);
+        await persistWorkspaceToS3(socket.roomId);
+        await clearRoomDirty(socket.roomId);
+        socket.emit("workspace-saved", { success: true });
+      } catch (err) {
+        console.error("[Socket] Manual save error:", err.message);
+        socket.emit("workspace-saved", { success: false, error: err.message });
+      }
+    });
+
+    // ── User Presence Update ───────────────────────────────────────────────
     socket.on("update-presence", async ({ roomId, activeFile }) => {
       socket.activeFile = activeFile;
       await broadcastRoomUsers(io, roomId);
     });
 
-    // Collaborative Cursors Event
+    // ── Collaborative Cursor Positions ─────────────────────────────────────
     socket.on("cursor-change", ({ roomId, position }) => {
       socket.cursor = position;
       socket.to(roomId).emit("cursor-update", {
         userId: socket.id,
         position,
-        activeFile: socket.activeFile
+        activeFile: socket.activeFile,
       });
     });
 
-    // Handle disconnecting (before rooms are cleared)
+    // ── Close Room ─────────────────────────────────────────────────────────
+    socket.on("close-room", async ({ roomId, userId }) => {
+      try {
+        await closeRoom(roomId, userId); // throws AppError if not owner
+        io.to(roomId).emit("room-closed", {
+          roomId,
+          message: "This room has been closed by the owner.",
+        });
+      } catch (err) {
+        socket.emit("room-error", err.message);
+      }
+    });
+
+    // ── Disconnecting (before rooms are cleared) ───────────────────────────
     socket.on("disconnecting", async () => {
       for (const roomId of socket.rooms) {
-        if (roomId !== socket.id) {
+        if (roomId === socket.id) continue;
+
+        try {
           const sockets = await io.in(roomId).fetchSockets();
           const usersList = sockets
             .filter((s) => s.id !== socket.id)
@@ -208,40 +229,15 @@ export const registerSocketHandlers = (io) => {
             }));
 
           io.to(roomId).emit("room-users", usersList);
-
-          if (usersList.length === 0) {
-            try {
-              const workspaceRoot = path.join(os.tmpdir(), "codefusion-workspaces", roomId);
-              if (fs.existsSync(workspaceRoot)) {
-                fs.rmSync(workspaceRoot, { recursive: true, force: true });
-              }
-            } catch (err) {
-              console.error("Cleanup error:", err);
-            }
-          }
+        } catch (err) {
+          console.error("[Socket] Error broadcasting users on disconnect:", err.message);
         }
       }
     });
 
-    // Close Room Event
-    socket.on("close-room", async ({ roomId, userId }) => {
-      try {
-        const room = await Room.findOne({ roomId });
-        if (!room) return socket.emit("room-error", "Room not found");
-        if (room.ownerId !== userId) {
-          return socket.emit("room-error", "Unauthorized: Only the owner can close the room.");
-        }
-        room.status = "closed";
-        await room.save();
-        io.to(roomId).emit("room-closed", { roomId, message: "This room has been closed by the owner." });
-      } catch (err) {
-        console.error("Socket close room error:", err);
-      }
-    });
-
-    // Disconnect Event
-    socket.on("disconnect", () => {
-      console.log("User Disconnected");
+    // ── Disconnect ─────────────────────────────────────────────────────────
+    socket.on("disconnect", (reason) => {
+      console.log(`[Socket] User ${socket.id} disconnected (${reason})`);
     });
   });
 };
