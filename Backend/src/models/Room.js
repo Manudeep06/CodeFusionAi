@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file defines the structure for how collaborative room details are saved in our database.
+ */
+
 import mongoose from "mongoose";
 
 const RoomSchema = new mongoose.Schema(

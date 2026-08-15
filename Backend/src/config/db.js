@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file contains the configuration to connect our backend to the database (usually MongoDB).
+ */
+
 import mongoose from "mongoose";
 
 export const connectDB = async () => {

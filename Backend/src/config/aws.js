@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file holds the setup and configuration for connecting to Amazon Web Services (AWS), like S3 for storing files.
+ */
+
 import { S3Client } from "@aws-sdk/client-s3";
 
 const s3Client = new S3Client({

@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file manages real-time connections (WebSockets). It handles events like users joining a room or sending messages instantly.
+ */
+
 import {
   getOrCreateRoom,
   addParticipant,

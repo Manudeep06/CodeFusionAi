@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file handles user-related requests like signing up, logging in, or updating profile information.
+ */
+
 import asyncHandler from "../utils/asyncHandler.js";
 import * as userService from "../services/user.service.js";
 

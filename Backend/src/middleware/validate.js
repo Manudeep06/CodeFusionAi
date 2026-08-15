@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file checks if the data sent by the user (like an email or password) is valid before we process it.
+ */
+
 import AppError from "../utils/AppError.js";
 
 /**

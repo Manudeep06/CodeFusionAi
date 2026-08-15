@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file keeps all our Redis cache keys in one place so we don't misspell them and cause bugs.
+ */
+
 /**
  * Redis Key Constants
  *

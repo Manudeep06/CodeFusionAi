@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file contains the core logic for managing a user's coding workspace and their files.
+ */
+
 import path from "path";
 import File from "../models/File.js";
 import Room from "../models/Room.js";

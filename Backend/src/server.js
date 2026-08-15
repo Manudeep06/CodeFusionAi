@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file is the main starting point of our backend. It sets up the server, connects to the database, and starts listening for incoming requests.
+ */
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";

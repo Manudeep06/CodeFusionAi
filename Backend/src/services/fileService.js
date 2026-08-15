@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file contains the core logic for organizing, reading, and writing files.
+ */
+
 /**
  * File Service
  *

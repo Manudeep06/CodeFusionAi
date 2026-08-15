@@ -80,7 +80,7 @@ function SingleTerminalInstance({ id, isActive, theme }) {
     const initWebContainer = async () => {
       try {
         term.write("Booting WebContainer...\r\n");
-        const { getWebContainer } = await import("../services/webcontainer");
+        const { getWebContainer } = await import("../../services/webcontainer");
         const instance = await getWebContainer();
         
         jshProcess = await instance.spawn("jsh", {

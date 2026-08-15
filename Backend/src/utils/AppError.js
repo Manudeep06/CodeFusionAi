@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file creates a custom error object so we can send consistent and helpful error details throughout our app.
+ */
+
 /**
  * AppError — Custom Operational Error
  *

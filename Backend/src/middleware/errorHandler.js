@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file catches any errors that happen while processing a request and sends a friendly error message back to the user.
+ */
+
 import AppError from "../utils/AppError.js";
 
 /**

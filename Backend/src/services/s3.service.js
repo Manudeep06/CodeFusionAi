@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file contains the core logic for securely uploading and downloading files from Amazon S3 storage.
+ */
+
 import {
   PutObjectCommand,
   GetObjectCommand,

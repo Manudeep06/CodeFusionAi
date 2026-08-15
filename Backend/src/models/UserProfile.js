@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file defines the structure for how user details (like name and email) are saved in our database.
+ */
+
 import mongoose from "mongoose";
 
 const UserProfileSchema = new mongoose.Schema(

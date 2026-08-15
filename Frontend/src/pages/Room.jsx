@@ -7,7 +7,7 @@ loader.config({ monaco });
 
 import { socket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
-import TerminalComponent from "../components/Terminal";
+import TerminalComponent from "../components/Room/Terminal";
 import { syncFilesToWebContainer, onServerReady, shouldRunNpmInstall, recordNpmInstall } from "../services/webcontainer";
 import { loadWorkspaceFiles, saveWorkspaceFiles } from "../services/db";
 import RoomAIAssist from "../components/AIAssist/RoomAIAssist";

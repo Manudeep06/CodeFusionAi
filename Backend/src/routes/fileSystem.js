@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file lists URLs for managing the file system structure (like folders) and connects them to the right functions.
+ */
+
 import express from "express";
 import fs from "fs";
 import path from "path";

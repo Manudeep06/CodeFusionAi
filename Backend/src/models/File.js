@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file defines the 'Schema' or structure for how file information is saved in our database.
+ */
+
 import mongoose from "mongoose";
 
 const FileSchema = new mongoose.Schema(

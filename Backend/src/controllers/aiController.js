@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file acts as a middleman for AI features. It receives AI-related requests from the user, calls the AI service, and sends back the result.
+ */
+
 import asyncHandler from "../utils/asyncHandler.js";
 import {
   generateResponse,

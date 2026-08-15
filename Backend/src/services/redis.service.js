@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file contains the core logic for saving and retrieving fast, temporary data using Redis.
+ */
+
 import redisClient from "../config/redis.js";
 import { REDIS_KEYS, REDIS_TTL, encodeFilePath, decodeFilePath } from "../utils/redisKeys.js";
 

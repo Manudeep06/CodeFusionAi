@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file contains the core logic for creating new users, verifying passwords, and managing accounts.
+ */
+
 import UserProfile from "../models/UserProfile.js";
 import AppError from "../utils/AppError.js";
 

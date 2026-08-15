@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file configures the connection to Redis, which is used for fast caching or real-time messaging.
+ */
+
 import Redis from "ioredis";
 
 /**
@@ -170,7 +175,7 @@ class RedisWrapper {
   }
 
   init() {
-    const url = process.env.REDIS_URL || "redis://127.0.0.1:6379";
+    const url = process.env.REDIS_URL || "redis://redis:6379";
     try {
       this.client = new Redis(url, {
         maxRetriesPerRequest: 1,

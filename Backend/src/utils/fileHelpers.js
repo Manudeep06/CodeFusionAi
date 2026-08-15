@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file contains small, reusable helper functions for dealing with files (like checking file types or sizes).
+ */
+
 import path from "path";
 
 /**

@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file lists the URLs for file operations (upload/download) and connects them to the file controller.
+ */
+
 import express from "express";
 import validate from "../middleware/validate.js";
 import {

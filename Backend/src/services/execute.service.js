@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file contains the actual core logic (business logic) for taking user code and running it safely.
+ */
+
 import fs from "fs";
 import path from "path";
 import { exec } from "child_process";

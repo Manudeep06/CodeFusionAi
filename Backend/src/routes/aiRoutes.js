@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file lists all the URLs (endpoints) for AI features and connects them to the right controller functions.
+ */
+
 import express from "express";
 import validate from "../middleware/validate.js";
 import {

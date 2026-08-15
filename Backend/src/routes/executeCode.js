@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file lists the URLs for code execution features and connects them to the execute controller.
+ */
+
 import express from "express";
 import validate from "../middleware/validate.js";
 import { executeCode } from "../controllers/execute.controller.js";

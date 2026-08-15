@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file lists the URLs for user authentication (login/signup) and connects them to the user controller.
+ */
+
 import express from "express";
 import validate from "../middleware/validate.js";
 import { getProfile, upsertProfile } from "../controllers/user.controller.js";

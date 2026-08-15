@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file contains the core logic for talking to the Gemini AI to generate answers or code.
+ */
+
 import genAI from "../config/gemini.js";
 import AppError from "../utils/AppError.js";
 

@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file contains the core logic for adding users to rooms, saving room states, and managing collaborations.
+ */
+
 import Room from "../models/Room.js";
 import AppError from "../utils/AppError.js";
 import { initializeWorkspaceFiles } from "./workspace.service.js";

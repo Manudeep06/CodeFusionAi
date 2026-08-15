@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file handles requests to run code. It takes the code from the user, passes it to the execution service, and returns the output.
+ */
+
 import asyncHandler from "../utils/asyncHandler.js";
 import { executeCode as runCode } from "../services/execute.service.js";
 

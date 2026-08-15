@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file handles requests related to files, such as uploading, downloading, or deleting files.
+ */
+
 import asyncHandler from "../utils/asyncHandler.js";
 import AppError from "../utils/AppError.js";
 import * as fileService from "../services/fileService.js";

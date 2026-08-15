@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This file handles requests for creating and managing collaborative rooms where users can work together.
+ */
+
 import asyncHandler from "../utils/asyncHandler.js";
 import * as roomService from "../services/roomService.js";
 

@@ -1,3 +1,8 @@
+﻿/**
+ * INTERVIEW PREP NOTES:
+ * This is a helper function that automatically catches errors in our async routes, saving us from writing 'try-catch' blocks everywhere.
+ */
+
 /**
  * asyncHandler — Async Route Wrapper
  *
