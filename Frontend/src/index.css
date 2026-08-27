@@ -440,7 +440,32 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:fo
 .cf-dashboard-main:not(.cf-sessions-main):not(.cf-ai-main) .cf-primary-button { background: var(--color-accent) !important; color: var(--color-accent-ink) !important; }
 
 .theme-dark, .theme-light { font-family: var(--font-body) !important; }
-.theme-dark { --vs-bg: var(--color-paper) !important; --vs-sidebarBg: var(--color-paper-raised) !important; --vs-activityBg: var(--color-paper-raised) !important; --vs-tabBarBg: var(--color-paper-muted) !important; --vs-tabActive: var(--color-paper-raised) !important; --vs-tabInactive: var(--color-paper-muted) !important; --vs-tabBorder: var(--color-rule) !important; --vs-statusBg: var(--color-paper-muted) !important; --vs-input: var(--color-paper-raised) !important; --vs-border: var(--color-rule) !important; --vs-highlight: var(--color-accent-soft) !important; --vs-hover: var(--color-paper-muted) !important; --vs-text: var(--color-ink) !important; --vs-textMuted: var(--color-ink-soft) !important; --vs-textDim: var(--color-ink-faint) !important; --vs-accent: var(--color-accent) !important; --vs-accentPurple: var(--color-accent) !important; --vs-green: var(--color-success) !important; --vs-teal: var(--color-success) !important; --vs-yellow: var(--color-accent) !important; --vs-red: var(--color-danger) !important; --vs-orange: var(--color-accent) !important; --vs-gradientA: var(--color-accent) !important; --vs-gradientB: var(--color-accent-hover) !important; }
+.theme-dark, .theme-light, :root {
+  --vs-bg: #ffffff !important;
+  --vs-sidebarBg: #f8fafc !important;
+  --vs-activityBg: #f1f5f9 !important;
+  --vs-tabBarBg: #e2e8f0 !important;
+  --vs-tabActive: #ffffff !important;
+  --vs-tabInactive: #f1f5f9 !important;
+  --vs-tabBorder: #cbd5e1 !important;
+  --vs-statusBg: #f8fafc !important;
+  --vs-input: #f1f5f9 !important;
+  --vs-border: #cbd5e1 !important;
+  --vs-highlight: rgba(79, 70, 229, 0.1) !important;
+  --vs-hover: rgba(0, 0, 0, 0.04) !important;
+  --vs-text: #0f172a !important;
+  --vs-textMuted: #64748b !important;
+  --vs-textDim: #94a3b8 !important;
+  --vs-accent: #4f46e5 !important;
+  --vs-accentPurple: #7c3aed !important;
+  --vs-green: #10b981 !important;
+  --vs-teal: #0d9488 !important;
+  --vs-yellow: #d97706 !important;
+  --vs-red: #ef4444 !important;
+  --vs-orange: #f97316 !important;
+  --vs-gradientA: #4f46e5 !important;
+  --vs-gradientB: #6366f1 !important;
+}
 
 @media (max-width: 768px) {
   .cf-nav { display: none; }

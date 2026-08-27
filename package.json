@@ -1,0 +1,17 @@
+{
+  "name": "codefusionai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CodeFusionAI - AI-Powered Real-Time Collaborative Coding Environment",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix Backend\" \"npm run dev --prefix Frontend\"",
+    "dev:backend": "npm run dev --prefix Backend",
+    "dev:frontend": "npm run dev --prefix Frontend",
+    "start": "concurrently \"npm run start --prefix Backend\" \"npm run dev --prefix Frontend\"",
+    "install:all": "npm install --prefix Backend && npm install --prefix Frontend",
+    "build": "npm run build --prefix Frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

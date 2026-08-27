@@ -1,4 +1,4 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file contains the core logic for managing a user's coding workspace and their files.
  */
@@ -14,7 +14,11 @@ import {
   clearRoomDirty,
   acquirePersistLock,
   releasePersistLock,
+  checkAndConsumeS3Token,
+  resetEditTokens,
+  getTokenBucketState,
 } from "./redis.service.js";
+import { TOKEN_BUCKET_CONFIG } from "../utils/redisKeys.js";
 import { getFileName, getExtension, getByteSize, detectLanguage } from "../utils/fileHelpers.js";
 
 /**
@@ -219,19 +223,28 @@ export const loadWorkspace = async (roomId) => {
  *
  * @param {string} roomId
  */
-export const persistWorkspaceToS3 = async (roomId) => {
+export const persistWorkspaceToS3 = async (roomId, isManualSave = false) => {
+  // Check Token Bucket rate limiter unless manual save bypass is active
+  if (!isManualSave) {
+    const hasToken = await checkAndConsumeS3Token(roomId);
+    if (!hasToken) {
+      console.log(`[Workspace] Persist for room ${roomId} skipped — rate limited by Token Bucket`);
+      return false;
+    }
+  }
+
   // ── Acquire distributed lock ───────────────────────────────────────────
   const lockAcquired = await acquirePersistLock(roomId);
   if (!lockAcquired) {
     console.log(`[Workspace] Persist for room ${roomId} skipped — another process holds the lock`);
-    return;
+    return false;
   }
 
   try {
     const files = await getCachedWorkspace(roomId);
     if (!files || !Array.isArray(files)) {
       console.log(`[Workspace] No cached workspace found for room ${roomId} — skipping persist`);
-      return;
+      return false;
     }
 
     const room = await Room.findOne({ roomId });
@@ -281,7 +294,12 @@ export const persistWorkspaceToS3 = async (roomId) => {
       }
     }
 
+    // Reset dirty tracking and edit tokens after successful flush
+    await clearRoomDirty(roomId);
+    await resetEditTokens(roomId);
+
     console.log(`[Workspace] Persist complete for room ${roomId}`);
+    return true;
   } finally {
     // ── Always release lock, even if persist threw an error ────────────────
     await releasePersistLock(roomId);
@@ -293,32 +311,44 @@ export const persistWorkspaceToS3 = async (roomId) => {
 let syncIntervalId = null;
 
 /**
- * Start the background dirty-room flusher.
- * Periodically syncs any rooms with unsaved changes from Redis → S3/MongoDB.
+ * Start the background dirty-room flusher driven by Token Bucket conditions.
+ * Periodically checks rooms with unsaved edits from Redis → S3/MongoDB.
  *
  * IMPORTANT: Call this once from server.js startup, NOT from inside a controller.
  *
- * @param {number} [intervalMs=30000] - Flush interval in milliseconds
+ * @param {number} [intervalMs=5000] - Polling interval in milliseconds (default 5s)
  */
-export const startWorkspaceSyncInterval = (intervalMs = 30000) => {
+export const startWorkspaceSyncInterval = (intervalMs = 5000) => {
   if (syncIntervalId) {
     console.log("[Workspace] Sync interval already running — skipping duplicate start");
     return;
   }
 
-  console.log(`[Workspace] Starting background S3 sync every ${intervalMs / 1000}s`);
+  console.log(`[Workspace] Starting background Token Bucket S3 flusher (checking every ${intervalMs / 1000}s)`);
 
   syncIntervalId = setInterval(async () => {
     try {
       const dirtyRooms = await getDirtyRooms();
       if (!dirtyRooms || dirtyRooms.length === 0) return;
 
-      console.log(`[Workspace] Flushing ${dirtyRooms.length} dirty room(s) to S3`);
+      const now = Date.now();
 
       for (const roomId of dirtyRooms) {
         try {
-          await persistWorkspaceToS3(roomId);
-          await clearRoomDirty(roomId);
+          const { editCount, lastEditTime } = await getTokenBucketState(roomId);
+          const idleMs = now - lastEditTime;
+
+          const thresholdReached = editCount >= TOKEN_BUCKET_CONFIG.flushEditThreshold;
+          const idleTimeoutExceeded = editCount > 0 && idleMs >= TOKEN_BUCKET_CONFIG.idleFlushTimeoutMs;
+
+          if (thresholdReached || idleTimeoutExceeded) {
+            const reason = thresholdReached
+              ? `Edit threshold reached (${editCount}/${TOKEN_BUCKET_CONFIG.flushEditThreshold} edit tokens)`
+              : `Idle timeout exceeded (${Math.round(idleMs / 1000)}s idle with ${editCount} pending edit tokens)`;
+
+            console.log(`[Workspace] Triggering S3 flush for room ${roomId}: ${reason}`);
+            await persistWorkspaceToS3(roomId);
+          }
         } catch (err) {
           console.error(`[Workspace] Failed to flush room ${roomId}:`, err.message);
         }

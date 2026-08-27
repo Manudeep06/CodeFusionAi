@@ -1,10 +1,10 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file contains the core logic for saving and retrieving fast, temporary data using Redis.
  */
 
 import redisClient from "../config/redis.js";
-import { REDIS_KEYS, REDIS_TTL, encodeFilePath, decodeFilePath } from "../utils/redisKeys.js";
+import { REDIS_KEYS, REDIS_TTL, TOKEN_BUCKET_CONFIG, encodeFilePath, decodeFilePath } from "../utils/redisKeys.js";
 
 /**
  * Redis Service — Pure Cache Interface
@@ -167,6 +167,114 @@ export const getDirtyRooms = async () => {
  */
 export const clearRoomDirty = async (roomId) => {
   await redisClient.srem(REDIS_KEYS.dirtyRooms(), roomId);
+};
+
+// ─── Token Bucket S3 Flushing & Rate Limiting ───────────────────────────────
+
+/**
+ * Increment the edit token counter for a room (1 edit = 1 token).
+ * Also updates the last edit timestamp.
+ *
+ * @param {string} roomId
+ * @returns {Promise<{ editCount: number, shouldFlush: boolean }>}
+ */
+export const incrementEditTokens = async (roomId) => {
+  try {
+    const key = REDIS_KEYS.tokenBucket(roomId);
+    const now = Date.now();
+
+    const editCount = await redisClient.hincrby(key, "editCount", 1);
+    await redisClient.hset(key, "lastEditTime", now.toString());
+    await redisClient.expire(key, REDIS_TTL.tokenBucket);
+
+    const shouldFlush = editCount >= TOKEN_BUCKET_CONFIG.flushEditThreshold;
+    return { editCount, shouldFlush };
+  } catch (err) {
+    console.error(`[Redis] incrementEditTokens error for room ${roomId}:`, err.message);
+    return { editCount: 1, shouldFlush: false };
+  }
+};
+
+/**
+ * Check if an S3 upload token is available in the room's Token Bucket,
+ * refilling tokens based on elapsed time if necessary. If available, consume 1 token.
+ *
+ * Rate-limiting token bucket algorithm:
+ *   - Capacity: bucketCapacity (default 5)
+ *   - Refill Rate: 1 token every refillRateMs (default 5000ms)
+ *
+ * @param {string} roomId
+ * @returns {Promise<boolean>} true if token was consumed and S3 upload can proceed, false if rate limited
+ */
+export const checkAndConsumeS3Token = async (roomId) => {
+  try {
+    const key = REDIS_KEYS.tokenBucket(roomId);
+    const now = Date.now();
+    const data = await redisClient.hgetall(key);
+
+    const capacity = TOKEN_BUCKET_CONFIG.bucketCapacity;
+    const refillRateMs = TOKEN_BUCKET_CONFIG.refillRateMs;
+
+    let s3Tokens = data.s3Tokens !== undefined ? parseFloat(data.s3Tokens) : capacity;
+    let lastRefill = data.lastRefill !== undefined ? parseInt(data.lastRefill, 10) : now;
+
+    // Refill tokens based on time elapsed since last refill
+    const elapsed = now - lastRefill;
+    if (elapsed > 0) {
+      const addedTokens = elapsed / refillRateMs;
+      s3Tokens = Math.min(capacity, s3Tokens + addedTokens);
+      lastRefill = now;
+    }
+
+    if (s3Tokens >= 1) {
+      s3Tokens -= 1;
+      await redisClient.hset(key, "s3Tokens", s3Tokens.toString(), "lastRefill", lastRefill.toString());
+      await redisClient.expire(key, REDIS_TTL.tokenBucket);
+      return true;
+    }
+
+    // Rate limited — update refilled token state without consuming
+    await redisClient.hset(key, "s3Tokens", s3Tokens.toString(), "lastRefill", lastRefill.toString());
+    return false;
+  } catch (err) {
+    console.error(`[Redis] checkAndConsumeS3Token error for room ${roomId}:`, err.message);
+    return true; // Fail open if Redis error occurs
+  }
+};
+
+/**
+ * Reset accumulated edit tokens to 0 after workspace has been persisted to S3.
+ *
+ * @param {string} roomId
+ */
+export const resetEditTokens = async (roomId) => {
+  try {
+    const key = REDIS_KEYS.tokenBucket(roomId);
+    await redisClient.hset(key, "editCount", "0");
+  } catch (err) {
+    console.error(`[Redis] resetEditTokens error for room ${roomId}:`, err.message);
+  }
+};
+
+/**
+ * Get the current token bucket state for a room.
+ *
+ * @param {string} roomId
+ * @returns {Promise<{ editCount: number, lastEditTime: number, s3Tokens: number }>}
+ */
+export const getTokenBucketState = async (roomId) => {
+  try {
+    const key = REDIS_KEYS.tokenBucket(roomId);
+    const data = await redisClient.hgetall(key);
+    return {
+      editCount: data.editCount ? parseInt(data.editCount, 10) : 0,
+      lastEditTime: data.lastEditTime ? parseInt(data.lastEditTime, 10) : 0,
+      s3Tokens: data.s3Tokens ? parseFloat(data.s3Tokens) : TOKEN_BUCKET_CONFIG.bucketCapacity,
+    };
+  } catch (err) {
+    console.error(`[Redis] getTokenBucketState error for room ${roomId}:`, err.message);
+    return { editCount: 0, lastEditTime: 0, s3Tokens: TOKEN_BUCKET_CONFIG.bucketCapacity };
+  }
 };
 
 // ─── Distributed Lock for S3 Persistence ─────────────────────────────────────

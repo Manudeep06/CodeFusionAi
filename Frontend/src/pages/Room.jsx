@@ -9,7 +9,7 @@ import { socket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
 import TerminalComponent from "../components/Room/Terminal";
 import { syncFilesToWebContainer, onServerReady, shouldRunNpmInstall, recordNpmInstall } from "../services/webcontainer";
-import { loadWorkspaceFiles, saveWorkspaceFiles } from "../services/db";
+import { loadWorkspaceFiles } from "../services/db";
 import RoomAIAssist from "../components/AIAssist/RoomAIAssist";
 
 import { LANGUAGES, getLangByExt, getFileColor, VS, BOILERPLATES } from "../components/Room/constants";
@@ -63,13 +63,25 @@ export default function Room() {
   const [selectedCode,    setSelectedCode]    = useState("");
   const roomTheme = "light";
   const [isRunning,       setIsRunning]       = useState(false);
-  const [activePanel,     setActivePanel]     = useState("explorer"); // explorer | users | ai
+  const [activePanel,     setActivePanel]     = useState("explorer"); // explorer | search | users | ai
+  const [searchQuery,     setSearchQuery]     = useState("");
+  const [contextMenu,     setContextMenu]     = useState(null); // { x, y, node }
+
+  /* ── Token Bucket S3 Save State ── */
+  const [saveStatus,    setSaveStatus]    = useState("saved"); // "saved" | "unsaved" | "saving"
+  const [lastSavedTime, setLastSavedTime] = useState(null);
+
+  /* ── Close context menu on global click ── */
+  useEffect(() => {
+    const handleWindowClick = () => setContextMenu(null);
+    window.addEventListener("click", handleWindowClick);
+    return () => window.removeEventListener("click", handleWindowClick);
+  }, []);
 
   /* ── Terminal & Sidebar resize ── */
   const [terminalHeight, setTerminalHeight] = useState(250);
 
   const [previewUrl, setPreviewUrl] = useState("");
-  const [rightTab, setRightTab] = useState("preview");
   const isDraggingTerm = useRef(false);
   const dragStartY = useRef(0);
   const dragStartH = useRef(0);
@@ -203,7 +215,6 @@ export default function Room() {
     onServerReady((port, url) => {
       setPreviewUrl(url);
       setIsPreviewOpen(true);
-      setRightTab("preview");
     });
   }, [roomId]);
 
@@ -212,15 +223,7 @@ export default function Room() {
     if (socket && socket.connected) {
       socket.emit("update-presence", { roomId, activeFile });
     }
-    if (!activeFile) return;
-    const f = files.find((file) => file.path === activeFile);
-    if (f && f.language) {
-      setLanguage(f.language);
-    } else {
-      const lang = getLangByExt(activeFile);
-      if (lang) setLanguage(lang.id);
-    }
-  }, [activeFile, files, roomId]);
+  }, [activeFile, roomId]);
 
   /* ── Socket ── */
   useEffect(() => {
@@ -263,6 +266,15 @@ export default function Room() {
       console.log("Room joined successfully:", roomId);
     });
 
+    socket.on("workspace-saved", ({ success, timestamp }) => {
+      if (success) {
+        setSaveStatus("saved");
+        setLastSavedTime(timestamp || Date.now());
+      } else {
+        setSaveStatus("unsaved");
+      }
+    });
+
     socket.on("join-error", (errorMessage) => {
       alert(errorMessage || "Failed to join room.");
       navigate("/dashboard");
@@ -302,7 +314,7 @@ export default function Room() {
           });
           return;
         }
-      } catch (_) { /* legacy plain string */ }
+      } catch { /* legacy plain string */ }
       // Legacy plain-string code
       setCode(incomingCode || "");
       setFiles((prev) => {
@@ -456,7 +468,28 @@ export default function Room() {
   }, [files]);
 
   /* ── Helpers ── */
-  const emitFiles = (upd) => socket.emit("code-change", { roomId, code: JSON.stringify(upd) });
+  const emitFiles = (upd) => {
+    setSaveStatus("unsaved");
+    socket.emit("code-change", { roomId, code: JSON.stringify(upd) });
+  };
+
+  const forceFlushToS3 = () => {
+    if (!socket.connected) return;
+    setSaveStatus("saving");
+    socket.emit("save-workspace");
+  };
+
+  /* ── Keyboard Shortcuts (Ctrl+S / Cmd+S to Save) ── */
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        forceFlushToS3();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const openFile = (path, content) => {
     setActiveFile(path);
@@ -515,11 +548,69 @@ export default function Room() {
   const handleEditorMount = (editor, monaco) => {
     editorRef.current = editor;
     window.monaco = monaco;
+
+    // Helper to format code
+    const formatCode = (model) => {
+      try {
+        const text = model.getValue();
+        const langId = model.getLanguageId();
+        if (langId === "json") {
+          const parsed = JSON.parse(text);
+          return [{ range: model.getFullModelRange(), text: JSON.stringify(parsed, null, 2) }];
+        }
+        let indent = 0;
+        const lines = text.split("\n");
+        const formatted = lines.map((line) => {
+          const trimmed = line.trim();
+          if (!trimmed) return "";
+          if (trimmed.startsWith("}") || trimmed.startsWith("]") || trimmed.startsWith(")") || trimmed.startsWith("</")) {
+            indent = Math.max(0, indent - 1);
+          }
+          const result = "  ".repeat(indent) + trimmed;
+          if (
+            (trimmed.endsWith("{") || trimmed.endsWith("[") || trimmed.endsWith("(") || (trimmed.startsWith("<") && !trimmed.startsWith("</") && !trimmed.endsWith("/>") && !trimmed.includes("</"))) &&
+            !trimmed.startsWith("//") && !trimmed.startsWith("/*")
+          ) {
+            indent++;
+          }
+          return result;
+        }).join("\n");
+        return [{ range: model.getFullModelRange(), text: formatted }];
+      } catch {
+        return [];
+      }
+    };
+
+    // Register Document & Range Formatting Providers for Monaco
+    const supportedLangs = ["javascript", "typescript", "json", "html", "css", "cpp", "java", "python"];
+    supportedLangs.forEach((lang) => {
+      monaco.languages.registerDocumentFormattingEditProvider(lang, {
+        provideDocumentFormattingEdits(model) {
+          return formatCode(model);
+        }
+      });
+      monaco.languages.registerDocumentRangeFormattingEditProvider(lang, {
+        provideDocumentRangeFormattingEdits(model, range) {
+          const text = model.getValueInRange(range);
+          let indent = 0;
+          const formatted = text.split("\n").map((line) => {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("}") || trimmed.startsWith("]")) indent = Math.max(0, indent - 1);
+            const res = "  ".repeat(indent) + trimmed;
+            if (trimmed.endsWith("{") || trimmed.endsWith("[")) indent++;
+            return res;
+          }).join("\n");
+          return [{ range, text: formatted }];
+        }
+      });
+    });
+
     editor.onDidChangeCursorPosition((e) => {
       if (socket && socket.connected) {
         socket.emit("cursor-change", { roomId, position: e.position });
       }
     });
+
     editor.onDidChangeCursorSelection((e) => {
       const model = editor.getModel();
       if (model) {
@@ -708,6 +799,16 @@ export default function Room() {
     return root.children;
   };
 
+  const handleContextMenu = (e, node) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: Math.min(e.clientX, window.innerWidth - 200),
+      y: Math.min(e.clientY, window.innerHeight - 200),
+      node,
+    });
+  };
+
   /* ── Tree renderer ── */
   const renderTree = (nodes, depth = 0) =>
     nodes.map((node) => {
@@ -718,54 +819,62 @@ export default function Room() {
         return (
           <div key={node.path}>
             <div
-              className="group flex items-center gap-1.5 cursor-pointer select-none"
+              className="group flex items-center gap-1.5 cursor-pointer select-none mx-1 px-2 py-1 rounded-md transition-colors duration-150"
               style={{
-                paddingLeft: `${depth * 12 + 8}px`,
-                paddingRight: "4px",
-                paddingTop: "2px",
-                paddingBottom: "2px",
+                paddingLeft: `${depth * 12 + 6}px`,
                 background: "transparent",
                 color: VS.text,
               }}
               onMouseEnter={(e) => e.currentTarget.style.background = VS.hover}
               onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
               onClick={() => setExpandedFolders((p) => ({ ...p, [node.path]: !p[node.path] }))}
+              onContextMenu={(e) => handleContextMenu(e, node)}
             >
               {/* Chevron */}
-              <svg width="10" height="10" viewBox="0 0 10 10" className="shrink-0" style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.15s", fill: VS.textMuted }}>
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 10 10"
+                className="shrink-0 transition-transform duration-150"
+                style={{
+                  transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+                  fill: VS.textMuted,
+                }}
+              >
                 <path d="M3 1l4 4-4 4" stroke={VS.textMuted} strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <FolderIcon open={isExpanded} size={15} />
-              <span className="text-[13px] flex-1 truncate" style={{ color: VS.text }}>{node.name}</span>
+              <span className="text-[13px] font-semibold flex-1 truncate" style={{ color: VS.text }}>{node.name}</span>
               {/* Inline actions */}
               <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   title="New File"
                   onClick={(e) => { e.stopPropagation(); setNewItemModal({ parentPath: node.path, isFolder: false }); }}
-                  className="w-5 h-5 flex items-center justify-center rounded text-xs hover:opacity-80"
-                  style={{ color: VS.textMuted }}
+                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-500/20 text-slate-500 hover:text-slate-800 transition-colors"
                 >
                   <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M9 2H4v12h8V6.5L9 2zm0 0v4.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /><path d="M8 9v4M6 11h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
                 </button>
                 <button
                   title="New Folder"
                   onClick={(e) => { e.stopPropagation(); setNewItemModal({ parentPath: node.path, isFolder: true }); }}
-                  className="w-5 h-5 flex items-center justify-center rounded text-xs hover:opacity-80"
-                  style={{ color: VS.textMuted }}
+                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-slate-500/20 text-slate-500 hover:text-slate-800 transition-colors"
                 >
-                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 4h5l1 2h8v7H1V4z" stroke="#dcb67a" strokeWidth="1.2" fill="none" /><path d="M8 8v4M6 10h4" stroke={VS.textMuted} strokeWidth="1.2" strokeLinecap="round" /></svg>
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 4h5l1 2h8v7H1V4z" stroke="#dcb67a" strokeWidth="1.2" fill="none" /><path d="M8 8v4M6 10h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
                 </button>
                 <button
                   title="Delete Folder"
                   onClick={(e) => { e.stopPropagation(); setDeleteModal({ path: node.path, isFolder: true }); }}
-                  className="w-5 h-5 flex items-center justify-center rounded text-xs hover:opacity-80"
-                  style={{ color: VS.textMuted }}
+                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-rose-500/20 text-slate-500 hover:text-rose-600 transition-colors"
                 >
                   <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V3h4v1M5 4v9h6V4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </button>
               </div>
             </div>
-            {isExpanded && node.children && renderTree(node.children, depth + 1)}
+            {isExpanded && node.children && (
+              <div className="relative border-l border-slate-200/60 dark:border-slate-800 ml-3.5 pl-0.5">
+                {renderTree(node.children, depth + 1)}
+              </div>
+            )}
           </div>
         );
       }
@@ -773,28 +882,28 @@ export default function Room() {
       return (
         <div
           key={node.path}
-          className="group flex items-center gap-1.5 cursor-pointer select-none"
+          className="group flex items-center gap-1.5 cursor-pointer select-none mx-1 px-2 py-1 rounded-md transition-all duration-150"
           style={{
-            paddingLeft: `${depth * 12 + 22}px`,
-            paddingRight: "4px",
-            paddingTop: "2px",
-            paddingBottom: "2px",
-            background: isSelected ? VS.highlight : "transparent",
-            color: isSelected ? "#fff" : VS.text,
+            paddingLeft: `${depth * 12 + 10}px`,
+            background: isSelected ? "rgba(79, 70, 229, 0.12)" : "transparent",
+            color: isSelected ? "var(--vs-accent)" : VS.text,
+            fontWeight: isSelected ? "600" : "400",
+            border: isSelected ? "1px solid rgba(79, 70, 229, 0.25)" : "1px solid transparent",
+            boxShadow: isSelected ? "0 1px 4px rgba(79, 70, 229, 0.1)" : "none",
           }}
           onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = VS.hover; }}
           onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
           onClick={() => openFile(node.path, node.content)}
+          onContextMenu={(e) => handleContextMenu(e, node)}
         >
           <FileIcon filename={node.name} size={15} />
           <span className="text-[13px] flex-1 truncate">{node.name}</span>
           <button
-            title="Delete"
+            title="Delete File"
             onClick={(e) => { e.stopPropagation(); setDeleteModal({ path: node.path, isFolder: false }); }}
-            className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-opacity hover:opacity-80"
-            style={{ color: VS.textMuted }}
+            className="w-5 h-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition-all hover:bg-rose-500/20 text-slate-400 hover:text-rose-600"
           >
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V3h4v1M5 4v9h6V4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V3h4v1M5 4v9h6V4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
         </div>
       );
@@ -802,7 +911,6 @@ export default function Room() {
 
   const treeNodes     = buildTree(files);
   const existingPaths = files.map((f) => f.path);
-  const fileCount     = files.filter((f) => !f.isFolder).length;
 
   return (
     <>
@@ -892,49 +1000,114 @@ export default function Room() {
 
         {/* ══ TITLE BAR ══ */}
         <div
-          className="h-9 flex items-center justify-between px-4 select-none shrink-0"
+          className="h-9 flex items-center justify-between px-3 select-none shrink-0"
           style={{
-            background: VS.input,
+            background: VS.sidebarBg,
             borderBottom: `1px solid ${VS.border}`,
           }}
         >
           {/* Left – Brand */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
             <div
-              className="w-5 h-5 rounded flex items-center justify-center shrink-0 text-white"
-              style={{ background: "#000" }}
+              className="w-5 h-5 rounded flex items-center justify-center shrink-0 text-white shadow-xs"
+              style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", border: "1px solid rgba(255,255,255,0.1)" }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
                 <path strokeLinecap="round" strokeLinejoin="round" d="m8 9 3 3-3 3m5 0h3M5 20h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
               </svg>
             </div>
-            <span
-              className="text-[12px] font-bold tracking-tight"
-              style={{ color: "var(--vs-text)" }}
-            >
+            <span className="text-[12px] font-bold tracking-tight" style={{ color: "var(--vs-text)" }}>
               CodeFusionAI
             </span>
             <span
-              className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full"
-              style={{ background: "var(--vs-highlight)", color: "var(--vs-accent)", border: "1px solid var(--vs-border)" }}
+              className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded text-indigo-600 dark:text-indigo-400"
+              style={{ background: "var(--vs-highlight)", border: "1px solid var(--vs-border)" }}
             >
-              Collaborative IDE
+              IDE
             </span>
           </div>
 
           {/* Centre – active file breadcrumb */}
-          <div className="flex items-center gap-1 text-[11px]" style={{ color: VS.textMuted }}>
-            {activeFile && (
+          <div className="flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-md" style={{ background: "var(--vs-hover)", border: `1px solid ${VS.border}`, color: VS.textMuted }}>
+            {activeFile ? (
               <>
-                <span>{activeFile.split("/").slice(0, -1).join(" › ")}</span>
-                {activeFile.includes("/") && <span style={{ color: VS.textDim }}> › </span>}
-                <span style={{ color: VS.text }}>{activeFile.split("/").pop()}</span>
+                <FileIcon filename={activeFile.split("/").pop()} size={13} />
+                <span className="font-medium" style={{ color: VS.textMuted }}>{activeFile.split("/").slice(0, -1).join(" / ")}</span>
+                {activeFile.includes("/") && <span style={{ color: VS.textDim }}> / </span>}
+                <span className="font-semibold" style={{ color: VS.text }}>{activeFile.split("/").pop()}</span>
               </>
+            ) : (
+              <span style={{ color: VS.textDim }} className="italic">No file open</span>
             )}
           </div>
 
-          {/* Right */}
-          <div />
+          {/* Right – S3 Storage Status & Save Button */}
+          <div className="flex items-center gap-2">
+            {/* Status Badge */}
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-all duration-150 select-none cursor-default"
+              style={{
+                background: saveStatus === "saved" ? "rgba(16, 185, 129, 0.1)" : saveStatus === "saving" ? "rgba(99, 102, 241, 0.1)" : "rgba(245, 158, 11, 0.1)",
+                border: `1px solid ${saveStatus === "saved" ? "rgba(16, 185, 129, 0.25)" : saveStatus === "saving" ? "rgba(99, 102, 241, 0.25)" : "rgba(245, 158, 11, 0.25)"}`,
+                color: saveStatus === "saved" ? "#059669" : saveStatus === "saving" ? "#4f46e5" : "#d97706",
+              }}
+              title={
+                saveStatus === "saved"
+                  ? `All workspace edits synced to AWS S3${lastSavedTime ? ` (Last saved at ${new Date(lastSavedTime).toLocaleTimeString()})` : ""}`
+                  : saveStatus === "saving"
+                  ? "Flushing workspace edits to AWS S3..."
+                  : "Unsaved edits buffered in Redis"
+              }
+            >
+              {saveStatus === "saving" ? (
+                <svg className="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <span
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{
+                    background: saveStatus === "saved" ? "#10b981" : "#f59e0b",
+                    boxShadow: saveStatus === "saved" ? "0 0 5px #10b981" : "0 0 5px #f59e0b"
+                  }}
+                />
+              )}
+              <span className="font-semibold">
+                {saveStatus === "saved"
+                  ? "Saved to S3"
+                  : saveStatus === "saving"
+                  ? "Saving..."
+                  : "Unsaved"}
+              </span>
+            </div>
+
+            {/* Save Button */}
+            <button
+              onClick={forceFlushToS3}
+              disabled={saveStatus === "saving"}
+              title="Save changes and flush Redis cache to AWS S3 immediately"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-semibold text-white transition-all duration-150 shadow-xs active:scale-[0.97] disabled:opacity-50 cursor-pointer"
+              style={{
+                background: "linear-gradient(135deg, #4f46e5, #6366f1)",
+                boxShadow: "0 1px 3px rgba(79, 70, 229, 0.25)",
+              }}
+            >
+              {saveStatus === "saving" ? (
+                <svg className="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                  <polyline points="17 21 17 13 7 13 7 21" />
+                  <polyline points="7 3 7 8 15 8" />
+                </svg>
+              )}
+              <span>{saveStatus === "saving" ? "Saving..." : "Save"}</span>
+            </button>
+          </div>
         </div>
 
         {/* ══ MAIN BODY ══ */}
@@ -954,12 +1127,16 @@ export default function Room() {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                 <rect x="4" y="2" width="11" height="14" rx="1" stroke="currentColor" strokeWidth="1.4" />
                 <path d="M9 2v14" stroke="currentColor" strokeWidth="1.4" />
-                <rect x="6" y="8" width="13" height="14" rx="1" stroke="currentColor" strokeWidth="1.4" fill={VS.activityBg} />
+                <rect x="6" y="8" width="13" height="14" rx="1" stroke="currentColor" strokeWidth="1.4" fill="var(--vs-activityBg)" />
               </svg>
             </ActivityIcon>
 
             {/* Search */}
-            <ActivityIcon title="Search" active={false} onClick={() => {}}>
+            <ActivityIcon
+              title="Search"
+              active={activePanel === "search"}
+              onClick={() => setActivePanel(activePanel === "search" ? null : "search")}
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />
                 <path d="M16.5 16.5L21 21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -1024,7 +1201,6 @@ export default function Room() {
               </svg>
             </button>
           </div>
-
           {/* ━━ SIDEBAR PANEL ━━ */}
           {activePanel && (
             <>
@@ -1032,45 +1208,42 @@ export default function Room() {
                 className="shrink-0 flex flex-col overflow-hidden"
                 style={{ width: `${sidebarWidth}px`, background: VS.sidebarBg, borderRight: `1px solid ${VS.border}` }}
               >
-              {/* Panel title */}
+              {/* Panel title header */}
               <div
-                className="h-8 flex items-center justify-between px-3 shrink-0"
-                style={{ borderBottom: `1px solid ${VS.border}` }}
+                className="h-9 flex items-center justify-between px-3 shrink-0 select-none"
+                style={{ borderBottom: `1px solid ${VS.border}`, background: VS.input }}
               >
-                <span
-                  className="text-[10px] font-bold tracking-widest uppercase"
-                  style={{ color: "#7d8590" }}
-                >{
-                  activePanel === "explorer" ? "Explorer"
-                  : activePanel === "users" ? "Collaborators"
-                  : "AI Assistant"
-                }</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold tracking-wider uppercase" style={{ color: VS.text }}>
+                    {activePanel === "explorer" ? "Explorer" : activePanel === "search" ? "Search Workspace" : activePanel === "users" ? "Collaborators" : "AI Assistant"}
+                  </span>
+                </div>
                 {activePanel === "explorer" && (
-                  <div className="flex items-center gap-0.5">
+                  <div className="flex items-center gap-1">
                     {/* New file */}
                     <button
                       title="New File"
                       onClick={() => setNewItemModal({ parentPath: "", isFolder: false })}
-                      className="w-6 h-6 flex items-center justify-center rounded hover:opacity-80"
+                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
                       style={{ color: VS.textMuted }}
                     >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M9 2H4v12h8V6.5L9 2zm0 0v4.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /><path d="M8 9v4M6 11h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M9 2H4v12h8V6.5L9 2zm0 0v4.5h3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /><path d="M8 9v4M6 11h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
                     </button>
                     {/* New folder */}
                     <button
                       title="New Folder"
                       onClick={() => setNewItemModal({ parentPath: "", isFolder: true })}
-                      className="w-6 h-6 flex items-center justify-center rounded hover:opacity-80"
+                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
                       style={{ color: VS.textMuted }}
                     >
-                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1 4h5l1 2h8v7H1V4z" stroke="#dcb67a" strokeWidth="1.2" fill="none" /><path d="M8 8v4M6 10h4" stroke={VS.textMuted} strokeWidth="1.2" strokeLinecap="round" /></svg>
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M1 4h5l1 2h8v7H1V4z" stroke="#d97706" strokeWidth="1.3" fill="none" /><path d="M8 8v4M6 10h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
                     </button>
                     {/* Upload */}
                     <input type="file" ref={fileInputRef} webkitdirectory="true" directory="true" multiple onChange={handleFolderUpload} className="hidden" />
                     <button
                       title="Upload Folder"
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-6 h-6 flex items-center justify-center rounded hover:opacity-80"
+                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
                       style={{ color: VS.textMuted }}
                     >
                       <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 11V2M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /><path d="M2 11v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
@@ -1079,7 +1252,7 @@ export default function Room() {
                     <button
                       title="Download as ZIP"
                       onClick={downloadZip}
-                      className="w-6 h-6 flex items-center justify-center rounded hover:opacity-80"
+                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
                       style={{ color: VS.textMuted }}
                     >
                       <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 2v9M5 8l3 3 3-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /><path d="M2 11v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
@@ -1090,22 +1263,37 @@ export default function Room() {
 
               {/* ── EXPLORER ── */}
               {activePanel === "explorer" && (
-                <div className="flex-1 overflow-y-auto">
-                  {/* Workspace section */}
+                <div className="flex-1 overflow-y-auto select-none">
+                  {/* Workspace Accordion Header */}
                   <div
-                    className="flex items-center gap-1.5 px-2.5 py-2 text-[10px] font-bold uppercase tracking-widest cursor-default select-none"
-                    style={{ color: "#484f58" }}
+                    className="flex items-center justify-between px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider cursor-pointer transition-colors"
+                    style={{ background: VS.bg, borderBottom: `1px solid ${VS.border}`, color: VS.text }}
                   >
-                    <svg width="8" height="8" viewBox="0 0 10 10" style={{ fill: "#484f58" }}>
-                      <path d="M2 1l6 4-6 4V1z" />
-                    </svg>
-                    Workspace
+                    <div className="flex items-center gap-1.5">
+                      <svg width="9" height="9" viewBox="0 0 10 10" className="transform rotate-90 shrink-0" style={{ fill: VS.textMuted }}>
+                        <path d="M2 1l6 4-6 4V1z" />
+                      </svg>
+                      <span>Workspace</span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-normal" style={{ background: VS.input, color: VS.textMuted }}>
+                      {files.filter(f => !f.isFolder).length}
+                    </span>
                   </div>
-                  <div className="pb-4">
+
+                  <div className="py-1">
                     {files.length === 0 ? (
-                      <div className="px-4 py-6 text-center">
-                        <div className="text-3xl mb-2" style={{ opacity: 0.15 }}>📂</div>
-                        <p className="text-xs italic" style={{ color: "#484f58" }}>No files yet. Click + to create one.</p>
+                      <div className="px-4 py-8 text-center flex flex-col items-center">
+                        <div className="w-12 h-12 mb-3 rounded-xl flex items-center justify-center text-xl" style={{ background: VS.input }}>
+                          📂
+                        </div>
+                        <p className="text-xs font-medium mb-3" style={{ color: VS.textMuted }}>No files in workspace yet.</p>
+                        <button
+                          onClick={() => setNewItemModal({ parentPath: "", isFolder: false })}
+                          className="px-3 py-1.5 rounded text-[11px] font-semibold text-white transition-opacity"
+                          style={{ background: "linear-gradient(135deg, #4f46e5, #6366f1)" }}
+                        >
+                          + Add File
+                        </button>
                       </div>
                     ) : (
                       renderTree(treeNodes)
@@ -1114,28 +1302,119 @@ export default function Room() {
                 </div>
               )}
 
+              {/* ── SEARCH PANEL ── */}
+              {activePanel === "search" && (
+                <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3 select-none">
+                  {/* Search Input Box */}
+                  <div className="relative flex items-center">
+                    <svg className="w-3.5 h-3.5 absolute left-2.5 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <circle cx="11" cy="11" r="8" strokeWidth="2" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2" />
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Search files or code..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-7 py-1.5 rounded-md text-[12px] outline-none transition-all"
+                      style={{
+                        background: VS.bg,
+                        border: `1px solid ${VS.border}`,
+                        color: VS.text,
+                      }}
+                      autoFocus
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-2 text-xs text-slate-400 hover:text-slate-600"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Search Results */}
+                  <div className="flex flex-col gap-1 overflow-y-auto">
+                    {searchQuery.trim() === "" ? (
+                      <p className="text-[11px] text-center text-slate-400 py-6">Type to search files or code content across workspace.</p>
+                    ) : (
+                      (() => {
+                        const results = files.filter(f => !f.isFolder).flatMap((file) => {
+                          const matches = [];
+                          const filenameMatches = file.path.toLowerCase().includes(searchQuery.toLowerCase());
+                          const lines = (file.content || "").split("\n");
+                          lines.forEach((lineText, idx) => {
+                            if (lineText.toLowerCase().includes(searchQuery.toLowerCase())) {
+                              matches.push({ path: file.path, line: idx + 1, lineText: lineText.trim() });
+                            }
+                          });
+                          if (filenameMatches && matches.length === 0) {
+                            matches.push({ path: file.path, line: 1, lineText: "Filename match" });
+                          }
+                          return matches;
+                        });
+
+                        if (results.length === 0) {
+                          return <p className="text-[11px] text-center text-slate-400 py-6">No matching results found.</p>;
+                        }
+
+                        return results.map((res, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => {
+                              const f = files.find(item => item.path === res.path);
+                              if (f) openFile(f.path, f.content);
+                            }}
+                            className="p-2 rounded-md hover:bg-slate-200/50 cursor-pointer border border-transparent hover:border-slate-300/50 transition-all flex flex-col gap-0.5"
+                            style={{ background: VS.bg }}
+                          >
+                            <div className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: VS.accent }}>
+                              <FileIcon filename={res.path.split("/").pop()} size={13} />
+                              <span className="truncate">{res.path}</span>
+                              <span className="ml-auto text-[10px] text-slate-400">L{res.line}</span>
+                            </div>
+                            <p className="text-[11px] font-mono truncate text-slate-600 pl-4">
+                              {res.lineText}
+                            </p>
+                          </div>
+                        ));
+                      })()
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* ── COLLABORATORS ── */}
               {activePanel === "users" && (
-                <div className="flex-1 overflow-y-auto px-2 py-2 flex flex-col gap-1.5">
+                <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2 select-none">
+                  <div className="flex items-center justify-between px-1 mb-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: VS.textMuted }}>Active Team ({users.length})</span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-xs" />
+                  </div>
                   {users.length === 0 ? (
-                    <div className="px-3 py-8 text-center">
-                      <div className="text-3xl mb-2" style={{ opacity: 0.15 }}>👥</div>
-                      <p className="text-xs italic" style={{ color: "#484f58" }}>No collaborators yet.</p>
+                    <div className="px-3 py-8 text-center flex flex-col items-center">
+                      <div className="w-10 h-10 mb-2 rounded-full flex items-center justify-center text-lg" style={{ background: VS.input }}>
+                        👥
+                      </div>
+                      <p className="text-xs italic" style={{ color: VS.textMuted }}>No other collaborators online.</p>
                     </div>
                   ) : (
                     users.map((u, i) => (
                       <div
                         key={i}
-                        className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg"
-                        style={{ background: VS.hover, border: `1px solid ${VS.border}` }}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all"
+                        style={{ background: VS.bg, border: `1px solid ${VS.border}` }}
                       >
-                        <CollaboratorAvatar photoURL={u.photoURL} username={u.username} />
+                        <div className="relative shrink-0">
+                          <CollaboratorAvatar photoURL={u.photoURL} username={u.username} />
+                          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2" style={{ borderColor: VS.bg }} />
+                        </div>
                         <div className="flex flex-col min-w-0 flex-1">
                           <span className="text-[12px] truncate leading-tight font-bold" style={{ color: VS.text }}>{u.username || "User"}</span>
-                          <span className="text-[10px] truncate leading-tight mt-0.5" style={{ color: VS.textMuted }}>{u.activeFile || "Idle"}</span>
-                        </div>
-                        <div className="ml-auto flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--vs-green)" }} />
+                          <span className="text-[10px] truncate leading-tight mt-0.5 font-mono" style={{ color: VS.textMuted }}>
+                            {u.activeFile ? `Editing ${u.activeFile.split('/').pop()}` : "Idle"}
+                          </span>
                         </div>
                       </div>
                     ))
@@ -1181,98 +1460,41 @@ export default function Room() {
           <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
 
             {openTabs.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center select-none" style={{ background: VS.bg }}>
-                <div className="w-20 h-20 mb-6 rounded-2xl flex items-center justify-center text-white shrink-0" style={{ background: "#000" }}>
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <div className="flex-1 flex flex-col items-center justify-center select-none px-6" style={{ background: VS.bg }}>
+                <div
+                  className="w-20 h-20 mb-6 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg"
+                  style={{ background: "linear-gradient(135deg, #1e1b4b, #312e81)", border: "1px solid rgba(255,255,255,0.1)" }}
+                >
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="m8 9 3 3-3 3m5 0h3M5 20h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
                   </svg>
                 </div>
                 <h2 className="text-xl font-bold mb-2 tracking-tight" style={{ color: VS.text }}>CodeFusionAI Workspace</h2>
-                <p className="text-[13px] mb-8" style={{ color: VS.textMuted }}>Select a file from the explorer or create a new one to begin.</p>
+                <p className="text-[13px] max-w-sm text-center mb-8" style={{ color: VS.textMuted }}>Select a file from the explorer or create a new document to start coding synchronously.</p>
                 
-                <div className="flex gap-4">
-                  <button onClick={() => setNewItemModal({ parentPath: "", isFolder: false })} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-150 cursor-pointer" style={{ background: VS.accent, color: "#fff" }}>
-                    Create File
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setNewItemModal({ parentPath: "", isFolder: false })}
+                    className="px-5 py-2.5 rounded-lg text-[13px] font-semibold text-white shadow-md active:scale-95 transition-all cursor-pointer"
+                    style={{ background: "linear-gradient(135deg, #4f46e5, #6366f1)" }}
+                  >
+                    + Create New File
                   </button>
-                  <button onClick={() => fileInputRef.current?.click()} className="px-5 py-2.5 rounded-lg text-[13px] font-bold transition-all duration-150 cursor-pointer" style={{ background: VS.input, color: VS.text, border: `1px solid ${VS.border}` }} onMouseEnter={(e) => e.currentTarget.style.borderColor=VS.accent} onMouseLeave={(e) => e.currentTarget.style.borderColor=VS.border}>
-                    Upload Project
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-5 py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-150 active:scale-95 cursor-pointer"
+                    style={{ background: VS.input, color: VS.text, border: `1px solid ${VS.border}` }}
+                  >
+                    Upload Folder
                   </button>
                 </div>
               </div>
             ) : (
               <div className="flex-1 flex flex-col min-h-0">
-                {/* ── TOOLBAR ── */}
-                <div
-                  className="h-9 shrink-0 flex items-center justify-between px-3 gap-3"
-                  style={{ background: VS.sidebarBg, borderBottom: `1px solid ${VS.border}` }}
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-all duration-150"
-                      style={{ color: VS.textMuted, border: `1px solid ${VS.border}`, background: VS.bg }}
-                      onMouseEnter={(e) => e.currentTarget.style.borderColor = VS.textDim}
-                      onMouseLeave={(e) => e.currentTarget.style.borderColor = VS.border}
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
-                        <path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                      <span
-                        className="bg-transparent outline-none text-[12px] font-medium"
-                        style={{ color: VS.text, cursor: "default" }}
-                      >
-                        {LANGUAGES.find(l => l.id === language)?.label || "Text"}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={runCode}
-                    disabled={isRunning}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-150"
-                    style={{ 
-                      background: isRunning ? "#21262d" : "#238636", 
-                      color: isRunning ? "#858585" : "#fff", 
-                      boxShadow: isRunning ? "none" : "0 2px 8px #23863640",
-                      cursor: isRunning ? "not-allowed" : "pointer"
-                    }}
-                    onMouseEnter={(e) => { if (!isRunning) e.currentTarget.style.opacity = "0.88"; }}
-                    onMouseLeave={(e) => { if (!isRunning) e.currentTarget.style.opacity = "1"; }}
-                  >
-                    {isRunning ? (
-                      <>
-                        <svg className="animate-spin h-3.5 w-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" style={{ animation: "spin 1s linear infinite" }}>
-                          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" />
-                          <path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" fill="currentColor" />
-                        </svg>
-                        Running...
-                      </>
-                    ) : (
-                      <>
-                        <svg width="9" height="9" viewBox="0 0 10 10" fill="#fff"><path d="M1 1l8 4-8 4V1z" /></svg>
-                        Run Code
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setIsPreviewOpen(!isPreviewOpen)}
-                    className="flex items-center gap-1.5 h-[28px] px-3.5 text-[11px] font-bold rounded-full transition-all tracking-wide"
-                    style={{
-                      background: isPreviewOpen ? "#30363d" : "#21262d",
-                      color: "#c9d1d9",
-                      border: "1px solid #30363d"
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "#30363d"; }}
-                    onMouseLeave={(e) => { if (!isPreviewOpen) e.currentTarget.style.background = "#21262d"; }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line></svg>
-                    Preview
-                  </button>
-                </div>
-
                 {/* ── TAB BAR ── */}
                 <div
-                  className="flex items-end overflow-x-auto shrink-0"
-                  style={{ background: VS.bg, borderBottom: `1px solid ${VS.border}`, scrollbarWidth: "none", minHeight: "35px" }}
+                  className="flex items-end overflow-x-auto shrink-0 select-none"
+                  style={{ background: VS.input, borderBottom: `1px solid ${VS.border}`, scrollbarWidth: "none", minHeight: "36px" }}
                 >
                   {openTabs.map((tab) => {
                     const isActive = tab === activeFile;
@@ -1281,32 +1503,95 @@ export default function Room() {
                     return (
                       <div
                         key={tab}
-                        className="flex items-center gap-2 px-3.5 shrink-0 cursor-pointer group transition-colors duration-100"
+                        className="flex items-center gap-2 px-3.5 shrink-0 cursor-pointer group transition-all duration-150"
                         style={{
-                          height: "35px",
-                          background: isActive ? VS.sidebarBg : "transparent",
+                          height: "36px",
+                          background: isActive ? VS.bg : "transparent",
                           borderRight: `1px solid ${VS.border}`,
-                          borderTop: isActive ? `1px solid ${fileColor}` : "1px solid transparent",
-                          color: isActive ? VS.text : VS.textDim,
-                          minWidth: "110px",
-                          maxWidth: "190px",
+                          borderTop: isActive ? `2px solid ${fileColor}` : "2px solid transparent",
+                          color: isActive ? VS.text : VS.textMuted,
+                          minWidth: "120px",
+                          maxWidth: "200px",
+                          boxShadow: isActive ? "0 -2px 8px rgba(0,0,0,0.03)" : "none",
                         }}
-                        onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = "#7d8590"; }}
-                        onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = "#484f58"; }}
                         onClick={() => { if (fileItem) openFile(tab, fileItem.content); }}
                       >
-                        <FileIcon filename={tab.split("/").pop()} size={13} />
+                        <FileIcon filename={tab.split("/").pop()} size={14} />
                         <span className="text-[12px] truncate flex-1 font-medium">{tab.split("/").pop()}</span>
                         <button
                           onClick={(e) => closeTab(e, tab)}
-                          className="w-4 h-4 flex items-center justify-center rounded text-[12px] opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white/10"
-                          style={{ color: "#7d8590" }}
+                          className="w-4 h-4 flex items-center justify-center rounded text-[11px] opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-500/20"
+                          style={{ color: VS.textMuted }}
                         >
-                          ×
+                          ✕
                         </button>
                       </div>
                     );
                   })}
+                </div>
+
+                {/* ── TOOLBAR ── */}
+                <div
+                  className="h-8 shrink-0 flex items-center justify-between px-3 gap-3 select-none"
+                  style={{ background: VS.sidebarBg, borderBottom: `1px solid ${VS.border}` }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium"
+                      style={{ color: VS.textMuted, border: `1px solid ${VS.border}`, background: VS.bg }}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: LANGUAGES.find(l => l.id === language)?.color || "#6366f1" }} />
+                      <span>{LANGUAGES.find(l => l.id === language)?.label || "Text"}</span>
+                    </div>
+
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Run Code */}
+                    <button
+                      onClick={runCode}
+                      disabled={isRunning}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded text-[11px] font-semibold text-white transition-all shadow-xs active:scale-95 disabled:opacity-50 cursor-pointer"
+                      style={{
+                        background: isRunning ? "#334155" : "linear-gradient(135deg, #10b981, #059669)",
+                        boxShadow: isRunning ? "none" : "0 1px 3px rgba(16, 185, 129, 0.3)",
+                      }}
+                    >
+                      {isRunning ? (
+                        <>
+                          <svg className="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                          <span>Running...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                            <polygon points="5 3 19 12 5 21 5 3" />
+                          </svg>
+                          <span>Run Code</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Preview Toggle */}
+                    <button
+                      onClick={() => setIsPreviewOpen(!isPreviewOpen)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold rounded transition-all cursor-pointer"
+                      style={{
+                        background: isPreviewOpen ? "linear-gradient(135deg, #4f46e5, #6366f1)" : VS.bg,
+                        color: isPreviewOpen ? "#ffffff" : VS.textMuted,
+                        border: `1px solid ${isPreviewOpen ? "transparent" : VS.border}`,
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                        <line x1="9" y1="3" x2="9" y2="21" />
+                      </svg>
+                      <span>Preview</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* ── MONACO EDITOR ── */}
@@ -1390,12 +1675,41 @@ export default function Room() {
               </div>
 
               <div className="shrink-0 flex flex-col" style={{ width: `${previewWidth}px`, background: VS.bg }}>
-                <div className="h-[35px] shrink-0 flex items-center px-3 gap-3" style={{ borderBottom: `1px solid ${VS.border}`, background: VS.sidebarBg }}>
-                  <span className="text-[11px] font-bold" style={{ color: VS.text }}>Live Preview</span>
-                  
-                  <div className="ml-auto flex items-center gap-2">
-                    <button onClick={() => setIsPreviewOpen(false)} title="Close preview" className="flex items-center transition-colors p-1.5 rounded border hover:opacity-80" style={{ color: VS.textMuted, background: VS.input, borderColor: VS.border }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                {/* Browser-Style Preview Header */}
+                <div className="h-9 shrink-0 flex items-center px-3 gap-2.5" style={{ borderBottom: `1px solid ${VS.border}`, background: VS.sidebarBg }}>
+                  {/* Traffic lights */}
+                  <div className="flex items-center gap-1.5 shrink-0 select-none">
+                    <div className="w-2.5 h-2.5 rounded-full bg-rose-400/80 cursor-pointer hover:opacity-100 transition-opacity" onClick={() => setIsPreviewOpen(false)} title="Close preview" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-amber-400/80" />
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400/80" />
+                  </div>
+
+                  {/* Browser Address Bar */}
+                  <div className="flex-1 flex items-center gap-2 px-2.5 py-1 rounded-md text-[11px]" style={{ background: VS.bg, border: `1px solid ${VS.border}` }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: VS.textMuted }}>
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="2" y1="12" x2="22" y2="12" />
+                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                    </svg>
+                    <span className="font-mono truncate flex-1" style={{ color: VS.text }}>{previewUrl || "http://localhost:5173"}</span>
+                  </div>
+
+                  {/* External Open & Close */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {previewUrl && (
+                      <button onClick={() => window.open(previewUrl, "_blank")} title="Open in external browser window" className="p-1 rounded hover:opacity-80 transition-opacity" style={{ color: VS.textMuted }}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                          <polyline points="15 3 21 3 21 9" />
+                          <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                      </button>
+                    )}
+                    <button onClick={() => setIsPreviewOpen(false)} title="Close preview" className="p-1 rounded hover:opacity-80 transition-opacity" style={{ color: VS.textMuted }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
                     </button>
                   </div>
                 </div>
@@ -1418,64 +1732,151 @@ export default function Room() {
 
         {/* ══ STATUS BAR ══ */}
         <div
-          className="h-6 shrink-0 flex items-center justify-between px-3 select-none"
+          className="h-6 shrink-0 flex items-center justify-between px-3 select-none text-[11px] font-sans"
           style={{
             background: VS.input,
             borderTop: `1px solid ${VS.border}`,
             color: VS.textMuted,
-            fontSize: "11px",
           }}
         >
-          {/* Left */}
+          {/* Left – Git branch & Collaborator stack */}
           <div className="flex items-center gap-3">
-            {/* Git branch */}
-            <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded transition-colors duration-150 cursor-pointer"
-              style={{ color: "#58a6ff" }}
-              onMouseEnter={(e) => e.currentTarget.style.background = "#58a6ff18"}
-              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            <div
+              className="flex items-center gap-1.5 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
+              style={{ color: "#6366f1" }}
+              title="Git Branch: main"
             >
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
-                <circle cx="5" cy="4" r="2" stroke="#58a6ff" strokeWidth="1.3" />
-                <circle cx="11" cy="4" r="2" stroke="#58a6ff" strokeWidth="1.3" />
-                <circle cx="5" cy="12" r="2" stroke="#58a6ff" strokeWidth="1.3" />
-                <path d="M5 6v4M5 6c0 2 6 2 6-2" stroke="#58a6ff" strokeWidth="1.3" />
+                <circle cx="5" cy="4" r="2" stroke="currentColor" strokeWidth="1.4" />
+                <circle cx="11" cy="4" r="2" stroke="currentColor" strokeWidth="1.4" />
+                <circle cx="5" cy="12" r="2" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M5 6v4M5 6c0 2 6 2 6-2" stroke="currentColor" strokeWidth="1.4" />
               </svg>
-              <span className="font-medium">main</span>
+              <span className="font-semibold text-[11px]">main</span>
             </div>
 
-            {/* Online */}
-            <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded cursor-pointer transition-colors duration-150"
-              onMouseEnter={(e) => e.currentTarget.style.background = "#3fb95018"}
-              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-            >
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb950" }} />
-              <span style={{ color: "#3fb950" }} className="font-medium">{users.length} online</span>
+            {/* Online users */}
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#10b981", boxShadow: "0 0 5px #10b981" }} />
+              <span className="font-semibold" style={{ color: "#10b981" }}>{users.length} online</span>
             </div>
           </div>
 
-          {/* Centre – room ID + copy */}
-          <div className="flex items-center gap-1.5" style={{ color: "#a371f7" }}>
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="1" stroke="#a371f7" strokeWidth="1.3" fill="none" /><path d="M5 4V3a3 3 0 0 1 6 0v1" stroke="#a371f7" strokeWidth="1.3" /></svg>
-            <span className="font-mono font-medium" style={{ letterSpacing: "0.03em" }}>Room: {roomId}</span>
+          {/* Centre – Room ID */}
+          <div className="flex items-center gap-1.5" style={{ color: "var(--vs-accentPurple)" }}>
+            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="1" stroke="currentColor" strokeWidth="1.3" fill="none" /><path d="M5 4V3a3 3 0 0 1 6 0v1" stroke="currentColor" strokeWidth="1.3" /></svg>
+            <span className="font-mono font-medium tracking-tight">Room: {roomId}</span>
             <CopyRoomId roomId={roomId} />
           </div>
 
-          {/* Right */}
+          {/* Right – Language, Files & S3 Sync */}
           <div className="flex items-center gap-3">
-            <span className="px-1.5 py-0.5 rounded cursor-pointer transition-colors duration-150"
-              style={{ color: LANGUAGES.find((l) => l.id === language)?.color || "#7d8590" }}
-              onMouseEnter={(e) => e.currentTarget.style.background = "#ffffff10"}
-              onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
-            >{LANGUAGES.find((l) => l.id === language)?.label || language}</span>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ color: VS.text }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: LANGUAGES.find((l) => l.id === language)?.color || "#7d8590" }} />
+              <span className="font-medium">{LANGUAGES.find((l) => l.id === language)?.label || language}</span>
+            </div>
             <span>UTF-8</span>
             <span>CRLF</span>
-            <span>{fileCount} file{fileCount !== 1 ? "s" : ""}</span>
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#3fb950", boxShadow: "0 0 4px #3fb950" }} />
-              <span style={{ color: "#3fb950" }}>Ready</span>
+            <span>{files.filter(f => !f.isFolder).length} files</span>
+            
+            <div
+              className="flex items-center gap-1.5 cursor-pointer px-1.5 py-0.5 rounded transition-all hover:bg-slate-500/10"
+              onClick={forceFlushToS3}
+              title="Click to force flush Redis cache to AWS S3"
+            >
+              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: saveStatus === "saved" ? "#10b981" : saveStatus === "saving" ? "#6366f1" : "#f59e0b", boxShadow: saveStatus === "saved" ? "0 0 5px #10b981" : "0 0 5px #f59e0b" }} />
+              <span className="font-medium" style={{ color: saveStatus === "saved" ? "#10b981" : saveStatus === "saving" ? "#6366f1" : "#f59e0b" }}>
+                {saveStatus === "saved" ? "S3 Synced" : saveStatus === "saving" ? "S3 Saving..." : "S3 Unsaved"}
+              </span>
             </div>
           </div>
         </div>
+
+        {/* ── CONTEXT MENU POPUP ── */}
+        {contextMenu && (
+          <div
+            className="fixed z-50 py-1.5 w-48 rounded-lg shadow-xl border text-[12px] font-medium select-none"
+            style={{
+              top: `${contextMenu.y}px`,
+              left: `${contextMenu.x}px`,
+              background: "#ffffff",
+              borderColor: "#cbd5e1",
+              color: "#0f172a",
+              boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {contextMenu.node?.isFolder ? (
+              <>
+                <button
+                  className="w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-indigo-50 hover:text-indigo-600 transition-colors cursor-pointer"
+                  onClick={() => {
+                    setNewItemModal({ parentPath: contextMenu.node.path, isFolder: false });
+                    setContextMenu(null);
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M9 2H4v12h8V6.5L9 2zm0 0v4.5h3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /><path d="M8 9v4M6 11h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
+                  <span>New File...</span>
+                </button>
+                <button
+                  className="w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-indigo-50 hover:text-indigo-600 transition-colors cursor-pointer"
+                  onClick={() => {
+                    setNewItemModal({ parentPath: contextMenu.node.path, isFolder: true });
+                    setContextMenu(null);
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M1 4h5l1 2h8v7H1V4z" stroke="#d97706" strokeWidth="1.3" fill="none" /><path d="M8 8v4M6 10h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
+                  <span>New Folder...</span>
+                </button>
+                <div className="my-1 border-t border-slate-200" />
+                <button
+                  className="w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer"
+                  onClick={() => {
+                    setDeleteModal({ path: contextMenu.node.path, isFolder: true });
+                    setContextMenu(null);
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V3h4v1M5 4v9h6V4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  <span>Delete Folder</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-indigo-50 hover:text-indigo-600 transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (contextMenu.node?.path) openFile(contextMenu.node.path, contextMenu.node.content);
+                    setContextMenu(null);
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" /><polyline points="13 2 13 9 20 9" /></svg>
+                  <span>Open File</span>
+                </button>
+                <button
+                  className="w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-indigo-50 hover:text-indigo-600 transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (contextMenu.node?.path) navigator.clipboard.writeText(contextMenu.node.path);
+                    setContextMenu(null);
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                  <span>Copy Path</span>
+                </button>
+                <div className="my-1 border-t border-slate-200" />
+                <button
+                  className="w-full px-3 py-1.5 text-left flex items-center gap-2 hover:bg-rose-50 text-rose-600 transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (contextMenu.node?.path) setDeleteModal({ path: contextMenu.node.path, isFolder: false });
+                    setContextMenu(null);
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V3h4v1M5 4v9h6V4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  <span>Delete File</span>
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </>
   );

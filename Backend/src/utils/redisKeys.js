@@ -1,4 +1,4 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file keeps all our Redis cache keys in one place so we don't misspell them and cause bugs.
  */
@@ -46,6 +46,27 @@ export const REDIS_KEYS = {
 
   /** Stores active room state (participants, cursors, etc.) */
   roomState: (roomId) => `room:${roomId}:state`,
+
+  /**
+   * Token bucket Hash storing edit token counts and S3 upload rate-limiting state.
+   * Pattern: room:{roomId}:token_bucket  →  Hash { editCount, s3Tokens, lastRefill, lastEditTime }
+   */
+  tokenBucket: (roomId) => `room:${roomId}:token_bucket`,
+};
+
+/** Default configuration for Token Bucket S3 flushes */
+export const TOKEN_BUCKET_CONFIG = {
+  /** Number of edit tokens accumulated before triggering an automatic S3 flush */
+  flushEditThreshold: 10,
+
+  /** Max idle time (in ms) with unsaved edit tokens before forcing an S3 flush */
+  idleFlushTimeoutMs: 10000,
+
+  /** Maximum burst capacity for S3 upload tokens */
+  bucketCapacity: 5,
+
+  /** Interval (in ms) to refill 1 S3 upload token */
+  refillRateMs: 5000,
 };
 
 /** Default TTL values (in seconds) */
@@ -55,6 +76,9 @@ export const REDIS_TTL = {
 
   /** S3 persist lock: 60 seconds max. Prevents deadlocks. */
   persistLock: 60,
+
+  /** Token bucket hash: 24 hours. */
+  tokenBucket: 60 * 60 * 24,
 
   /** File content cache: 30 minutes */
   fileContent: 60 * 30,

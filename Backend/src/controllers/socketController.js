@@ -1,4 +1,4 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file manages real-time connections (WebSockets). It handles events like users joining a room or sending messages instantly.
  */
@@ -14,6 +14,7 @@ import {
   cacheWorkspace,
   markRoomDirty,
   clearRoomDirty,
+  incrementEditTokens,
 } from "../services/redis.service.js";
 
 /**
@@ -152,13 +153,23 @@ export const registerSocketHandlers = (io) => {
     });
 
     // ── Real-Time Code Change ──────────────────────────────────────────────
-    // Caches the latest workspace state in Redis and marks the room dirty.
+    // Caches workspace state, records 1 edit token, and triggers S3 flush if threshold reached.
     socket.on("code-change", async ({ roomId, code }) => {
       try {
         await cacheWorkspace(roomId, code);
         await markRoomDirty(roomId);
+
+        // Record 1 edit token for this change
+        const { shouldFlush } = await incrementEditTokens(roomId);
+        if (shouldFlush) {
+          console.log(`[Socket] Edit token threshold reached for room ${roomId} — initiating S3 flush`);
+          const success = await persistWorkspaceToS3(roomId);
+          if (success) {
+            io.to(roomId).emit("workspace-saved", { success: true, timestamp: Date.now(), reason: "threshold" });
+          }
+        }
       } catch (err) {
-        console.error("[Socket] Redis code-change caching error:", err.message);
+        console.error("[Socket] Redis code-change processing error:", err.message);
       }
       socket.to(roomId).emit("receive-code", code);
     });
@@ -170,8 +181,15 @@ export const registerSocketHandlers = (io) => {
       try {
         await cacheWorkspace(socket.roomId, code);
         await markRoomDirty(socket.roomId);
+        const { shouldFlush } = await incrementEditTokens(socket.roomId);
+        if (shouldFlush) {
+          const success = await persistWorkspaceToS3(socket.roomId);
+          if (success) {
+            io.to(socket.roomId).emit("workspace-saved", { success: true, timestamp: Date.now(), reason: "threshold" });
+          }
+        }
       } catch (err) {
-        console.error("[Socket] Redis sync-workspace caching error:", err.message);
+        console.error("[Socket] Redis sync-workspace processing error:", err.message);
       }
     });
 
@@ -180,9 +198,8 @@ export const registerSocketHandlers = (io) => {
       if (!socket.roomId) return;
       try {
         console.log(`[Socket] Manual save triggered for room ${socket.roomId}`);
-        await persistWorkspaceToS3(socket.roomId);
-        await clearRoomDirty(socket.roomId);
-        socket.emit("workspace-saved", { success: true });
+        const success = await persistWorkspaceToS3(socket.roomId, true);
+        io.to(socket.roomId).emit("workspace-saved", { success, timestamp: Date.now(), reason: "manual" });
       } catch (err) {
         console.error("[Socket] Manual save error:", err.message);
         socket.emit("workspace-saved", { success: false, error: err.message });
