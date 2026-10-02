@@ -56,38 +56,63 @@ CodeFusionAI is a state-of-the-art, web-based, AI-powered real-time collaborativ
 CodeFusionAI uses a high-performance, client-server collaborative architecture with in-memory caching and client-side WebAssembly execution:
 
 ```mermaid
-graph TD
-    subgraph Client [Browser Client]
-        Monaco[Monaco Editor]
-        Xterm[Xterm.js Terminal]
-        WASM[WebContainers WASM - React/Node]
-        IDB[(IndexedDB Local Cache)]
-        Monaco <-->|Offline Auto-Save| IDB
-        Monaco -->|Mount Files| WASM
-        WASM -->|StdOut Logs| Xterm
+flowchart TB
+    %% ─── STYLING DEFINITIONS ──────────────────────────────
+    classDef client fill:#EFF6FF,stroke:#3B82F6,stroke-width:2px,color:#1E3A8A,font-weight:600;
+    classDef server fill:#F0FDF4,stroke:#16A34A,stroke-width:2px,color:#14532D,font-weight:600;
+    classDef cache fill:#FEF2F2,stroke:#DC2626,stroke-width:2px,color:#7F1D1D,font-weight:600;
+    classDef cloud fill:#FAF5FF,stroke:#9333EA,stroke-width:2px,color:#581C87,font-weight:600;
+    classDef ai fill:#FFFBEB,stroke:#D97706,stroke-width:2px,color:#78350F,font-weight:600;
+
+    %% ─── CLIENT TIER ─────────────────────────────────────
+    subgraph ClientTier ["🖥️ CLIENT LAYER (Browser Cloud IDE)"]
+        Monaco["💻 Monaco Editor (Core Code Input & Cursors)"]:::client
+        WebContainer["⚡ WebContainer VM (In-Browser Node/React WASM)"]:::client
+        Xterm["🐚 Xterm.js Terminal (Dev Server & npm CLI)"]:::client
+        Preview["🌐 Live Browser Preview (Hot Module Reloading)"]:::client
+        IDB[("💾 IndexedDB (Local Offline Workspace Storage)")]:::client
+
+        Monaco <-->|"Offline Auto-Save"| IDB
+        Monaco -->|"Differential Mount"| WebContainer
+        WebContainer -->|"Stdout Streams"| Xterm
+        WebContainer -->|"Internal Port Route"| Preview
     end
 
-    subgraph Backend [Node.js / Express Server]
-        SocketServer[Socket.IO Gateway]
-        WorkspaceService[Workspace Service]
-        TokenBucket[Token Bucket Rate Limiter]
+    %% ─── SERVER TIER ─────────────────────────────────────
+    subgraph ServerTier ["⚙️ REAL-TIME BACKEND (Node.js & Express)"]
+        SocketGateway["🔌 Socket.IO Gateway (Sub-50ms Room Broker)"]:::server
+        WorkspaceManager["📁 Workspace Orchestration Service"]:::server
+        TokenBucketEngine["⏱️ Token Bucket Rate Limiter (5 Tokens / 5s Refill)"]:::server
+
+        SocketGateway -->|"Count Edits (10 threshold)"| TokenBucketEngine
+        SocketGateway <-->|"Load / Persist State"| WorkspaceManager
     end
 
-    subgraph CloudServices [Cloud Infrastructure & AI]
-        RedisCache[(Redis - Hot Cache & Locks)]
-        S3Storage[(AWS S3 - File Snapshots)]
-        MongoDB[(MongoDB Atlas - Metadata)]
-        Gemini[Google Gemini 2.5 AI]
-        FirebaseAuth[Firebase Auth]
+    %% ─── CACHE TIER ──────────────────────────────────────
+    subgraph CacheTier ["🚀 IN-MEMORY CACHE & LOCKS (Redis)"]
+        RedisHash[("⚡ Redis Hash Storage (room:id:files)")]:::cache
+        RedisLocks[("🔒 Distributed Mutex Lock (SET NX EX)")]:::cache
+        DirtySet[("🏷️ Dirty Rooms Set (SADD / SMEMBERS)")]:::cache
+
+        WorkspaceManager <-->|"Acquire / Release Mutex"| RedisLocks
+        TokenBucketEngine <-->|"Mark / Flush Unsaved Rooms"| DirtySet
     end
 
-    Client <-->|WebSockets sub-50ms sync| SocketServer
-    Client -->|User Auth| FirebaseAuth
-    SocketServer <-->|Buffer Keystrokes & Distributed Locks| RedisCache
-    SocketServer -->|Accumulate Edits| TokenBucket
-    TokenBucket -->|Batched Writes 30s Flush| S3Storage
-    WorkspaceService <-->|Metadata & Rooms| MongoDB
-    SocketServer <-->|Code Review & Chat| Gemini
+    %% ─── CLOUD & AI TIER ─────────────────────────────────
+    subgraph CloudTier ["☁️ CLOUD INFRASTRUCTURE & AI INTELLIGENCE"]
+        S3[("📦 AWS S3 (Durable Code Snapshots)")]:::cloud
+        Mongo[("🍃 MongoDB Atlas (Metadata, Versions & Users)")]:::cloud
+        Gemini["🤖 Google Gemini 2.5 AI (Code Review & Assistant)"]:::ai
+        Firebase["🛡️ Firebase Auth (Google OAuth & Sessions)"]:::cloud
+    end
+
+    %% ─── CROSS-TIER PIPELINES ────────────────────────────
+    Monaco <-->|"Real-Time WebSockets (<50ms Sync)"| SocketGateway
+    ClientTier -->|"User Authentication"| Firebase
+    SocketGateway <-->|"Buffer Keystrokes (Avoid Race Conditions)"| RedisHash
+    TokenBucketEngine -->|"Batched Snapshot Flush every 30s (-85% S3 Calls)"| S3
+    WorkspaceManager <-->|"Metadata Queries & Version Counters"| Mongo
+    SocketGateway <-->|"Code Review, Complexity & Chat Prompts"| Gemini
 ```
 
 ---
