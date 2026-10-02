@@ -53,6 +53,8 @@ CodeFusionAI is a state-of-the-art, web-based, AI-powered real-time collaborativ
 
 ## 📐 Architecture Overview
 
+![CodeFusionAI Architecture](docs/Architecture.png)
+
 CodeFusionAI uses a high-performance, client-server collaborative architecture with in-memory caching and client-side WebAssembly execution:
 
 ```mermaid
