@@ -1,10 +1,12 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file lists all the URLs (endpoints) for AI features and connects them to the right controller functions.
  */
 
 import express from "express";
 import validate from "../middleware/validate.js";
+import { requireAuth } from "../middleware/auth.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 import {
   chatWithAI,
   reviewCodeHandler,
@@ -13,6 +15,9 @@ import {
 } from "../controllers/aiController.js";
 
 const router = express.Router();
+
+// Every AI call costs Gemini quota: require a user and cap each one at 30/min.
+router.use(requireAuth, rateLimit({ name: "ai", limit: 30, windowSec: 60 }));
 
 /**
  * AI Routes

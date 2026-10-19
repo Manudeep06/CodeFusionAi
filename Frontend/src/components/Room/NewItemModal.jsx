@@ -1,3 +1,4 @@
+import { Folder, FileText, CircleAlert } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
 function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel }) {
@@ -17,17 +18,17 @@ function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel
     onConfirm(t);
   };
 
-  const accentColor = isFolder ? "#e3b341" : "#58a6ff";
+  const accentColor = isFolder ? "#d97706" : "#2563eb";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center" style={{ animation: "fadeIn 0.15s ease" }}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onCancel} />
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onCancel} />
       <div
         className="relative w-[440px] rounded-xl overflow-hidden shadow-2xl"
         style={{
-          background: "#161b22",
-          border: "1px solid #30363d",
-          boxShadow: `0 0 0 1px #30363d, 0 24px 48px #00000080, 0 0 60px ${accentColor}18`,
+          background: "#ffffff",
+          border: "1px solid #e2e8f0",
+          boxShadow: `0 0 0 1px #e2e8f0, 0 24px 48px rgba(15,23,42,0.18)`,
           animation: "slideUp 0.18s cubic-bezier(0.34,1.56,0.64,1)",
         }}
       >
@@ -37,14 +38,14 @@ function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel
             className="w-9 h-9 rounded-lg flex items-center justify-center text-base shrink-0"
             style={{ background: accentColor + "18", border: `1px solid ${accentColor}30` }}
           >
-            {isFolder ? "📁" : "📄"}
+            {isFolder ? <Folder size={17} color="#d97706" /> : <FileText size={17} color="#2563eb" />}
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-semibold" style={{ color: "#e6edf3" }}>
+            <h3 className="text-sm font-semibold" style={{ color: "#0f172a" }}>
               New {isFolder ? "Folder" : "File"}
             </h3>
             {parentPath && (
-              <p className="text-[11px] mt-0.5" style={{ color: "#7d8590", fontFamily: "Consolas, monospace" }}>
+              <p className="text-[11px] mt-0.5" style={{ color: "#64748b", fontFamily: "Consolas, monospace" }}>
                 inside / {parentPath}
               </p>
             )}
@@ -52,16 +53,16 @@ function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel
           <button
             onClick={onCancel}
             className="w-7 h-7 flex items-center justify-center rounded-lg text-lg leading-none transition-colors"
-            style={{ color: "#484f58" }}
-            onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
-            onMouseLeave={(e) => e.currentTarget.style.color = "#484f58"}
+            style={{ color: "#94a3b8" }}
+            onMouseEnter={(e) => e.currentTarget.style.color = "#0f172a"}
+            onMouseLeave={(e) => e.currentTarget.style.color = "#94a3b8"}
           >×</button>
         </div>
 
         {/* Body */}
         <form onSubmit={submit} className="px-5 pb-5 flex flex-col gap-4">
           <div>
-            <label className="text-[11px] font-semibold uppercase tracking-wider mb-2 block" style={{ color: "#7d8590" }}>
+            <label className="text-[11px] font-semibold uppercase tracking-wider mb-2 block" style={{ color: "#64748b" }}>
               {isFolder ? "Folder" : "File"} Name
             </label>
             <input
@@ -72,16 +73,16 @@ function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel
               spellCheck={false}
               className="w-full rounded-lg px-4 py-2.5 text-sm outline-none transition-all duration-150"
               style={{
-                background: "#0d1117",
-                color: "#e6edf3",
-                border: `1px solid ${error ? "#f85149" : accentColor + "60"}`,
+                background: "#f8fafc",
+                color: "#0f172a",
+                border: `1px solid ${error ? "#dc2626" : accentColor + "60"}`,
                 fontFamily: "'Consolas', monospace",
-                boxShadow: error ? "0 0 0 3px #f8514920" : `0 0 0 3px ${accentColor}12`,
+                boxShadow: error ? "0 0 0 3px #dc262620" : `0 0 0 3px ${accentColor}12`,
               }}
             />
             {error && (
-              <p className="mt-2 text-[11px] flex items-center gap-1.5" style={{ color: "#f85149" }}>
-                <span>⚠</span> {error}
+              <p className="mt-2 text-[11px] flex items-center gap-1.5" style={{ color: "#dc2626" }}>
+                <CircleAlert size={13} /> {error}
               </p>
             )}
           </div>
@@ -90,9 +91,9 @@ function NewItemModal({ isFolder, parentPath, existingPaths, onConfirm, onCancel
             <button
               type="button" onClick={onCancel}
               className="px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-150"
-              style={{ background: "#21262d", color: "#7d8590", border: "1px solid #30363d" }}
-              onMouseEnter={(e) => e.currentTarget.style.color = "#e6edf3"}
-              onMouseLeave={(e) => e.currentTarget.style.color = "#7d8590"}
+              style={{ background: "#f1f5f9", color: "#64748b", border: "1px solid #e2e8f0" }}
+              onMouseEnter={(e) => e.currentTarget.style.color = "#0f172a"}
+              onMouseLeave={(e) => e.currentTarget.style.color = "#64748b"}
             >
               Cancel
             </button>

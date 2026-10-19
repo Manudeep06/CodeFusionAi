@@ -1,0 +1,50 @@
+/* Sign in / create account / reset password */
+.auth-page {
+  background-color: var(--color-paper-muted);
+  background-image: linear-gradient(var(--color-paper-sunken) 1px, transparent 1px), linear-gradient(90deg, var(--color-paper-sunken) 1px, transparent 1px);
+  background-size: 32px 32px;
+  display: flex; flex-direction: column; min-height: 100vh;
+}
+.auth-top { align-items: center; display: flex; justify-content: space-between; padding: 1.1rem clamp(1rem, 3vw, 2rem); }
+.auth-main { align-items: center; display: flex; flex: 1; justify-content: center; padding: 1rem 1rem 3rem; }
+.auth-card { background: var(--color-paper); border: 1px solid var(--color-rule); border-radius: 1.1rem; box-shadow: 0 16px 40px -20px oklch(0.208 0.042 265.8 / 0.25); max-width: 100%; padding: 2rem; width: 27rem; }
+.auth-head { margin-bottom: 1.4rem; text-align: center; }
+.auth-head .cf-brand-mark { border-radius: 0.75rem; height: 2.75rem; width: 2.75rem; }
+.auth-head h1 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.015em; margin: 0.85rem 0 0.3rem; }
+.auth-head p { color: var(--color-ink-faint); font-size: var(--text-sm); margin: 0; }
+.auth-tabs { margin-bottom: 1.15rem; }
+.auth-card .cf-message { margin-bottom: 1rem; }
+.auth-google { min-height: 2.75rem; width: 100%; }
+
+.auth-input { align-items: center; background: var(--color-paper); border: 1px solid var(--color-rule-strong); border-radius: var(--radius-input); color: var(--color-ink-ghost); display: flex; gap: 0.55rem; padding: 0 0.4rem 0 0.8rem; transition: border-color var(--dur-short), box-shadow var(--dur-short); }
+.auth-input:hover { border-color: var(--color-ink-ghost); }
+.auth-input:focus-within { border-color: var(--color-accent); box-shadow: 0 0 0 4px var(--color-accent-soft); }
+.has-error .auth-input { border-color: var(--color-danger); box-shadow: 0 0 0 4px var(--color-danger-soft); }
+.cf-field .auth-input input { border: 0; box-shadow: none; min-height: 2.65rem; padding: 0; }
+.cf-field .auth-input input:focus { box-shadow: none; }
+.auth-eye { align-items: center; background: none; border: 0; border-radius: 6px; color: var(--color-ink-ghost); cursor: pointer; display: inline-flex; padding: 0.4rem; }
+.auth-eye:hover { color: var(--color-ink); }
+.auth-label-row { align-items: center; display: flex; justify-content: space-between; }
+.auth-link { background: none; border: 0; color: var(--color-accent); cursor: pointer; font-size: var(--text-sm); font-weight: 500; padding: 0; }
+.auth-link:hover { color: var(--color-accent-hover); text-decoration: underline; }
+.auth-strength { display: flex; gap: 0.35rem; }
+.auth-strength i { background: var(--color-rule); border-radius: var(--radius-pill); flex: 1; height: 4px; transition: background-color var(--dur-short); }
+.auth-strength i.is-on.s1 { background: var(--color-danger); }
+.auth-strength i.is-on.s2 { background: var(--color-warning); }
+.auth-strength i.is-on.s3, .auth-strength i.is-on.s4 { background: var(--color-success); }
+.auth-submit { margin-top: 0.4rem; min-height: 2.8rem; width: 100%; }
+
+.auth-preview { align-items: center; background: var(--color-accent-soft); border: 1px dashed var(--color-accent-ring); border-radius: 0.85rem; display: flex; gap: 0.75rem; margin-top: 1rem; padding: 0.75rem; }
+.auth-preview > span { align-items: center; background: var(--color-accent); border-radius: 50%; color: #fff; display: inline-flex; flex-shrink: 0; font-size: 0.8rem; font-weight: 600; height: 2.2rem; justify-content: center; width: 2.2rem; }
+.auth-preview div { display: grid; }
+.auth-preview strong { font-weight: 600; }
+.auth-preview small { color: var(--color-ink-faint); font-size: 0.78rem; }
+.auth-foot { color: var(--color-ink-faint); font-size: var(--text-sm); margin: 1.1rem 0 0; text-align: center; }
+.auth-note { color: var(--color-ink-ghost); font-size: 0.78rem; line-height: 1.5; margin: 0.6rem 0 0; text-align: center; }
+.auth-sent { align-items: center; display: flex; flex-direction: column; gap: 0.9rem; text-align: center; }
+.auth-sent svg { color: var(--color-success); }
+.auth-sent p { color: var(--color-ink-soft); font-size: var(--text-sm); line-height: 1.6; margin: 0; }
+
+@media (max-width: 480px) {
+  .auth-card { padding: 1.5rem 1.15rem; }
+}

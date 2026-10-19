@@ -1,4 +1,4 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file is the main starting point of our backend. It sets up the server, connects to the database, and starts listening for incoming requests.
  */
@@ -28,6 +28,7 @@ import { startWorkspaceSyncInterval, stopWorkspaceSyncInterval } from "./service
 
 // Middleware (must be imported last, registered after routes)
 import errorHandler from "./middleware/errorHandler.js";
+import { socketAuth } from "./middleware/auth.js";
 
 // ─── Environment ──────────────────────────────────────────────────────────────
 dotenv.config();
@@ -85,6 +86,9 @@ const io = new Server(httpServer, {
   },
   maxHttpBufferSize: 1e9, // 1 GB — supports large workspace uploads
 });
+
+// Every socket must present a valid Firebase ID token (handshake.auth.token)
+io.use(socketAuth);
 
 // Register Socket.IO event handlers
 registerSocketHandlers(io);

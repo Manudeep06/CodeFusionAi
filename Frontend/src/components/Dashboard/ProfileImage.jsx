@@ -17,7 +17,7 @@ function ProfileImage({ src, fallback, alt, className }) {
   }
 
   return (
-    <div className={`bg-[var(--color-ink)] flex items-center justify-center font-black text-[var(--color-paper-raised)] select-none ${className}`}>
+    <div style={{ background: "var(--gradient-brand)" }} className={`flex items-center justify-center font-bold text-white select-none ${className}`}>
       {fallback}
     </div>
   );

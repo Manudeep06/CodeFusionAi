@@ -6,7 +6,7 @@
 import path from "path";
 import File from "../models/File.js";
 import Room from "../models/Room.js";
-import { createS3Key, uploadFileContent, getFileContent } from "./s3.service.js";
+import { createS3Key, uploadFileContent, getFileContent, deleteS3Object } from "./s3.service.js";
 import {
   getCachedWorkspace,
   cacheWorkspace,
@@ -19,6 +19,7 @@ import {
   getTokenBucketState,
 } from "./redis.service.js";
 import { TOKEN_BUCKET_CONFIG } from "../utils/redisKeys.js";
+import { createSnapshot } from "./history.service.js";
 import { getFileName, getExtension, getByteSize, detectLanguage } from "../utils/fileHelpers.js";
 
 /**
@@ -223,7 +224,12 @@ export const loadWorkspace = async (roomId) => {
  *
  * @param {string} roomId
  */
-export const persistWorkspaceToS3 = async (roomId, isManualSave = false) => {
+/**
+ * @param {string} roomId
+ * @param {boolean} [isManualSave=false] - bypasses the token bucket
+ * @param {{ userId?: string, userName?: string }} [meta] - who triggered it (for history)
+ */
+export const persistWorkspaceToS3 = async (roomId, isManualSave = false, meta = {}) => {
   // Check Token Bucket rate limiter unless manual save bypass is active
   if (!isManualSave) {
     const hasToken = await checkAndConsumeS3Token(roomId);
@@ -294,9 +300,25 @@ export const persistWorkspaceToS3 = async (roomId, isManualSave = false) => {
       }
     }
 
+    // Drop metadata + S3 objects for files that were deleted or renamed away
+    const livePaths = files.filter((f) => f.path).map((f) => f.path);
+    const removed = await File.find({ roomId, path: { $nin: livePaths } }).select("_id s3Key").lean();
+    if (removed.length) {
+      await Promise.allSettled(removed.filter((f) => f.s3Key).map((f) => deleteS3Object(f.s3Key)));
+      await File.deleteMany({ _id: { $in: removed.map((f) => f._id) } });
+    }
+
     // Reset dirty tracking and edit tokens after successful flush
     await clearRoomDirty(roomId);
     await resetEditTokens(roomId);
+
+    // Record a version (no-op if nothing changed since the last snapshot)
+    try {
+      const snap = await createSnapshot(roomId, files, { reason: isManualSave ? "manual" : "auto", ...meta });
+      if (snap) console.log(`[History] Room ${roomId} → v${snap.version} (${snap.reason})`);
+    } catch (err) {
+      console.error(`[History] Snapshot failed for room ${roomId}:`, err.message);
+    }
 
     console.log(`[Workspace] Persist complete for room ${roomId}`);
     return true;

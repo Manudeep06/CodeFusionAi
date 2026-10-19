@@ -1,10 +1,12 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file handles requests for creating and managing collaborative rooms where users can work together.
  */
 
 import asyncHandler from "../utils/asyncHandler.js";
 import * as roomService from "../services/roomService.js";
+import * as historyService from "../services/history.service.js";
+import AppError from "../utils/AppError.js";
 
 /**
  * Room Controller
@@ -53,8 +55,7 @@ export const getUserRooms = asyncHandler(async (req, res) => {
  */
 export const closeRoom = asyncHandler(async (req, res) => {
   const { roomId } = req.params;
-  const { userId } = req.body;
-  const room = await roomService.closeRoom(roomId, userId);
+  const room = await roomService.closeRoom(roomId, req.user.uid);
   res.status(200).json({ success: true, message: "Room closed successfully", room });
 });
 
@@ -64,8 +65,7 @@ export const closeRoom = asyncHandler(async (req, res) => {
  */
 export const resumeRoom = asyncHandler(async (req, res) => {
   const { roomId } = req.params;
-  const { userId } = req.body;
-  const room = await roomService.resumeRoom(roomId, userId);
+  const room = await roomService.resumeRoom(roomId, req.user.uid);
   res.status(200).json({ success: true, message: "Room resumed successfully", room });
 });
 
@@ -75,7 +75,25 @@ export const resumeRoom = asyncHandler(async (req, res) => {
  */
 export const deleteRoom = asyncHandler(async (req, res) => {
   const { roomId } = req.params;
-  const { userId } = req.body;
-  await roomService.deleteRoom(roomId, userId);
+  await roomService.deleteRoom(roomId, req.user.uid);
   res.status(200).json({ success: true, message: "Room deleted permanently" });
+});
+
+/**
+ * GET /api/rooms/:roomId/history — newest-first list of saved versions.
+ */
+export const getRoomHistory = asyncHandler(async (req, res) => {
+  const { roomId } = req.params;
+  if (!(await roomService.getRoomById(roomId))) throw new AppError("Room not found", 404);
+  const versions = await historyService.listSnapshots(roomId);
+  res.status(200).json(versions);
+});
+
+/**
+ * GET /api/rooms/:roomId/history/:version — files (with contents) of one version.
+ */
+export const getRoomVersion = asyncHandler(async (req, res) => {
+  const { roomId, version } = req.params;
+  const { snapshot, files } = await historyService.getSnapshotFiles(roomId, version);
+  res.status(200).json({ version: snapshot.version, reason: snapshot.reason, createdAt: snapshot.createdAt, files });
 });

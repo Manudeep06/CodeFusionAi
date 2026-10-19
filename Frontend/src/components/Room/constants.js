@@ -9,12 +9,12 @@ export const LANGUAGES = [
 ];
 
 export const BOILERPLATES = {
-  javascript: '// Welcome to CodeFusionAI 🚀\n\nconsole.log("Hello World!");\n',
-  python: '# Welcome to CodeFusionAI 🚀\n\nprint("Hello World!")\n',
-  cpp: '// Welcome to CodeFusionAI 🚀\n\n#include <iostream>\n\nint main() {\n    std::cout << "Hello World!" << std::endl;\n    return 0;\n}\n',
-  java: '// Welcome to CodeFusionAI 🚀\n\npublic class temp_run {\n    public static void main(String[] args) {\n        System.out.println("Hello World!");\n    }\n}\n',
-  css: '/* Welcome to CodeFusionAI 🚀 */\n\nbody {\n    margin: 0;\n    padding: 0;\n}\n',
-  html: '<!-- Welcome to CodeFusionAI 🚀 -->\n<!DOCTYPE html>\n<html lang="en">\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello World!</h1>\n</body>\n</html>\n',
+  javascript: '// Welcome to CodeFusionAI\n\nconsole.log("Hello World!");\n',
+  python: '# Welcome to CodeFusionAI\n\nprint("Hello World!")\n',
+  cpp: '// Welcome to CodeFusionAI\n\n#include <iostream>\n\nint main() {\n    std::cout << "Hello World!" << std::endl;\n    return 0;\n}\n',
+  java: '// Welcome to CodeFusionAI\n\npublic class temp_run {\n    public static void main(String[] args) {\n        System.out.println("Hello World!");\n    }\n}\n',
+  css: '/* Welcome to CodeFusionAI */\n\nbody {\n    margin: 0;\n    padding: 0;\n}\n',
+  html: '<!-- Welcome to CodeFusionAI -->\n<!DOCTYPE html>\n<html lang="en">\n<head>\n    <title>Hello World</title>\n</head>\n<body>\n    <h1>Hello World!</h1>\n</body>\n</html>\n',
   json: '{\n  "message": "Hello World!"\n}\n'
 };
 

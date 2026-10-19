@@ -1,4 +1,4 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file handles user-related requests like signing up, logging in, or updating profile information.
  */
@@ -29,7 +29,7 @@ export const getProfile = asyncHandler(async (req, res) => {
  * Body: { userId, photoURL?, displayName? }
  */
 export const upsertProfile = asyncHandler(async (req, res) => {
-  const { userId, photoURL, displayName } = req.body;
-  const profile = await userService.upsertUserProfile(userId, { photoURL, displayName });
+  const { photoURL, displayName } = req.body;
+  const profile = await userService.upsertUserProfile(req.user.uid, { photoURL, displayName });
   res.status(200).json(profile);
 });

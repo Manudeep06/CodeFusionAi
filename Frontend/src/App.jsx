@@ -1,15 +1,22 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
+import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
+import IsolatedRoute from "./routes/IsolatedRoute.jsx";
 import Room from "./pages/Room.jsx";
+import Assistant from "./pages/Assistant.jsx";
+import Docs from "./pages/Docs.jsx";
+import { Toaster } from "./components/ui/Toast.jsx";
+import { ConfirmHost } from "./components/ui/ConfirmDialog.jsx";
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Login />} />
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
 
         <Route
           path="/dashboard"
@@ -19,12 +26,17 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/assistant" element={<ProtectedRoute><Assistant /></ProtectedRoute>} />
+        <Route path="/docs" element={<Docs />} />
+        <Route path="/docs/:page" element={<Docs />} />
         <Route
           path="/room/:roomId"
           element={
-            <ProtectedRoute>
-              <Room />
-            </ProtectedRoute>
+            <IsolatedRoute>
+              <ProtectedRoute>
+                <Room />
+              </ProtectedRoute>
+            </IsolatedRoute>
           }
         />
         <Route
@@ -51,6 +63,8 @@ function App() {
           }
         />
       </Routes>
+      <Toaster />
+      <ConfirmHost />
     </BrowserRouter>
   );
 }

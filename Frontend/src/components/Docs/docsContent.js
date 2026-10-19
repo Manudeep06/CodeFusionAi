@@ -1,352 +1,644 @@
+/**
+ * CodeFusionAI documentation, written against the current source tree.
+ * Each section: { id, group, label, content (GitHub-flavoured markdown) }.
+ * Callouts use blockquotes starting with [!NOTE], [!TIP] or [!WARNING].
+ */
 export const docsSections = [
+  // ─── Getting started ───────────────────────────────────────────────────────
   {
-    id: "welcome",
-    label: "1. Welcome",
+    id: "introduction",
+    group: "Getting started",
+    label: "Introduction",
     content: `
-# 1. Welcome
+# Introduction
 
-## What is CodeFusionAI?
-CodeFusionAI is a state-of-the-art, AI-powered real-time collaborative workspace designed for developer teams. It allows you to write, run, and debug code directly in your browser without local dependencies.
+CodeFusionAI is a browser-based, real-time collaborative IDE. A team opens the same **room**, edits the same files together, runs the project inside the browser, and asks an AI assistant that can see the code they are working on.
 
-## Key Features
-- **Real-Time Collaboration:** Code with your team instantly.
-- **AI Assistant:** Google Gemini integrated for code generation, bug fixing, and reviews.
-- **In-Browser Execution:** Run Node.js, Python, C++, and Java directly.
-- **Version Control:** Built-in Git integration for pushing and pulling.
-- **Video & Chat:** Communicate without leaving the editor.
+## What you can do
 
-## Supported Programming Languages
-CodeFusionAI supports a wide array of languages, including but not limited to:
-- JavaScript / TypeScript (via WebContainers)
-- Python
-- C++
-- Java
-- HTML / CSS
+| Capability | How it works |
+| --- | --- |
+| Live collaborative editing | Yjs CRDT updates over Socket.IO merge concurrent edits without conflicts, with presence and live cursors. |
+| Run real projects | [WebContainers](https://webcontainers.io) boot a Node.js runtime in the tab: \`npm install\`, \`npm run dev\` and a live preview, with no server-side sandbox. |
+| AI pair programming | A Gemini (\`gemini-2.5-flash\`) assistant that explains, reviews, optimises and writes code using your active file as context. |
+| Durable workspaces | Files are cached in Redis, persisted to Amazon S3, and indexed in MongoDB, so a room survives server restarts. |
+| Public & private rooms | Keep a room to people with the ID, or list it in the public hub. |
 
-## Why use CodeFusionAI?
-No local setup required, instant synchronization, and built-in AI makes CodeFusionAI the ultimate platform for technical interviews, hackathons, and remote team collaborations.
-    `
+## Who it's for
+
+- Teams pairing remotely or running workshops
+- Technical interviews and hackathons
+- Students learning from public rooms
+
+> [!TIP] New here? Follow the **Quickstart**. You'll have a running React app shared with a teammate in about a minute.
+`,
   },
   {
-    id: "getting-started",
-    label: "2. Getting Started",
+    id: "quickstart",
+    group: "Getting started",
+    label: "Quickstart",
     content: `
-# 2. Getting Started
+# Quickstart
 
-## Creating an account & Logging in
-1. Navigate to the main application URL.
-2. Click on **Login**.
-3. Authenticate using your preferred method (e.g., Google or Email).
+## 1. Sign in
+Open the app and choose **Get started**. You can sign in with Google or with an email and password (Firebase Authentication). New accounts are created on the **Create account** tab.
 
-## Dashboard Overview
-Once logged in, you will land on the Dashboard. Here you can see your active rooms, public rooms, and account settings.
+## 2. Create a room
+On the Dashboard, under **Create a room**:
 
-## Creating a Workspace
-1. In the Dashboard, enter a **Project Name** under "Create a room".
-2. Select a starting template (e.g., React, Node, Python).
-3. Choose **Private** or **Public** access.
+1. Enter a **project name**. It also becomes the root folder of the workspace.
+2. Choose a **template**: React, Vue, Node or Vanilla.
+3. Choose **Private** (anyone with the ID can join) or **Public** (also listed in the public hub, with an optional description).
 4. Click **Create room**.
 
-## Opening an Existing Workspace
-- To join an existing room, paste the Room ID into the "Join a room" input and click **Join room**.
-- Alternatively, select a recent room from the Dashboard list.
+You are taken straight into the room. Its ID looks like \`cfai-ab12-cd34\`.
 
-## Creating Files and Folders
-- In the room, use the **File Explorer** on the left panel.
-- Click the **New File** or **New Folder** icons at the top of the explorer to organize your workspace.
+## 3. Invite collaborators
+Copy the room ID from the status bar at the bottom of the IDE and share it. A collaborator pastes it into **Join a room** on their Dashboard, or into the command palette (**Ctrl K**).
 
-## Saving Files
-Files in CodeFusionAI are saved to your browser's IndexedDB automatically and synchronized to the server in real-time. Use \`Ctrl + S\` to trigger an explicit save and format.
-    `
+## 4. Run it
+Click **Run Code** in the editor toolbar. For template projects this runs \`npm install\` (the first time only) and \`npm run dev\` in the in-browser terminal. When the dev server starts, the **Preview** panel opens automatically.
+
+> [!NOTE] The first install downloads packages into the browser and can take 10–30 seconds. Later runs reuse \`node_modules\` unless \`package.json\` changes.
+`,
   },
   {
-    id: "collaboration",
-    label: "3. Collaboration",
+    id: "rooms",
+    group: "Getting started",
+    label: "Rooms & sessions",
     content: `
-# 3. Collaboration
+# Rooms & sessions
 
-## Creating a room
-When you create a workspace, you are essentially creating a "room". You can share the Room ID with collaborators.
+A **room** is a shared workspace: a file tree, its participants and its settings. Every room has an owner (the creator).
 
-## Joining a room
-Collaborators can enter the Room ID on their Dashboard to instantly join your session.
+## Room lifecycle
 
-## Public vs Private rooms
-- **Public Rooms:** Visible on the Dashboard for anyone to join and view.
-- **Private Rooms:** Accessible only via the specific Room ID (and potentially restricted to invited users).
+| State | Meaning | Who can change it |
+| --- | --- | --- |
+| **Active** | Anyone with the ID can join and edit. | — |
+| **Closed** | Participants are disconnected and new joins are refused. Files are kept. | Owner (Sessions → ⋯ → Close) |
+| **Deleted** | The room, its file metadata and its S3 objects are removed permanently. | Owner (Sessions → ⋯ → Delete) |
 
-## Real-time code synchronization
-Code changes are broadcasted via Socket.io with sub-15ms latency, allowing multiple users to edit the same file seamlessly.
+A closed room can be reopened from the **Sessions** tab with **Resume**.
 
-## Cursor synchronization
-You will see colored markers representing the cursors of other users currently in the room, complete with their name labels.
+## The Sessions tab
+- **My sessions** lists rooms you own or have joined. Filter by *Active*, *Closed*, *Owned* or *Joined*, or search by name or ID.
+- **Public hub** lists every public room, so you can browse and join without an invitation.
 
-## Chat feature
-Use the built-in chat panel to send messages to your team members without leaving the IDE.
+## Command palette
+Press **Ctrl K** (**⌘ K** on macOS) anywhere on the Dashboard to jump between tabs, open a recent room, create or join a room, or paste a room ID to join it directly.
+`,
+  },
 
-## Video call feature
-For deeper collaboration, click the **Call** button to initiate a WebRTC-based video and audio session with your peers.
-    `
+  // ─── Using the IDE ─────────────────────────────────────────────────────────
+  {
+    id: "editor",
+    group: "Using the IDE",
+    label: "Editor",
+    content: `
+# Editor
+
+The editor is [Monaco](https://microsoft.github.io/monaco-editor/), the engine behind VS Code, so syntax highlighting, multi-cursor editing, bracket-pair colouring, find & replace, and the minimap all work as you'd expect.
+
+## Layout
+
+| Area | Purpose |
+| --- | --- |
+| **Activity bar** (far left) | Switch the side panel between Explorer, Search, Collaborators and AI Assistant. |
+| **Side panel** | The selected tool. Drag its edge to resize. |
+| **Tabs** | Open files. Click × to close one. |
+| **Editor** | The active file. **Run Code** and **Preview** sit in its toolbar. |
+| **Terminal** | WebContainer shells. Drag the divider to resize. |
+| **Status bar** | Online users, room ID (click to copy), language, and save status. |
+
+## Save status
+The badge in the title bar shows where your edits are:
+
+- **Unsaved**: edits are in Redis and waiting to be flushed.
+- **Saving…**: a flush to S3 is in progress.
+- **Saved to S3**: everything is durable.
+
+Press **Ctrl S** to force a save at any time. It also formats JSON files.
+`,
   },
   {
-    id: "ai-assistant",
-    label: "4. AI Assistant",
+    id: "files",
+    group: "Using the IDE",
+    label: "Files & folders",
     content: `
-# 4. AI Assistant
+# Files & folders
 
-The AI Assistant is powered by advanced LLMs and can significantly boost your productivity.
+The **Explorer** shows the room's file tree.
 
-## Capabilities
-- **AI Code Generation:** Generate boilerplate or complex logic from natural language.
-- **Bug Fixing:** Automatically detect and patch errors.
-- **Code Explanation:** Highlight complex code and ask for a breakdown.
-- **Code Optimization:** Refactor inefficient loops or algorithms.
-- **Complexity Analysis:** Check Big-O time and space complexity.
-- **Documentation Generation:** Auto-generate JSDoc or Python docstrings.
-- **Best Practices Suggestions:** Ensure your code meets industry standards.
+- **New file / New folder**: use the icons at the top of the Explorer, or right-click a folder.
+- **Rename / Delete**: right-click a file or folder.
+- **Upload**: upload individual files, or a whole folder from your machine.
+- **Download**: export the entire workspace as \`workspace-<roomId>.zip\`.
 
-> [!TIP]
-> **Prompt Examples:**
-> - "Explain this code."
-> - "Optimize this function."
-> - "Find bugs."
-> - "Generate unit tests."
-> - "Review my code."
-    `
-  },
-  {
-    id: "code-editor",
-    label: "5. Code Editor",
-    content: `
-# 5. Code Editor
+## Where files live
 
-The editor is powered by **Monaco Editor** (the same engine behind VS Code).
+1. **In your browser**: the workspace is mirrored into IndexedDB (\`CodeFusionWorkspaceDB\`) so it opens instantly.
+2. **In Redis**: the server keeps the live workspace as a hash per room (\`room:<id>:files\`), one field per file path.
+3. **In S3 + MongoDB**: file contents are stored as S3 objects and their metadata (path, size, language, S3 key) as \`File\` documents.
 
-## Features
-- **Syntax Highlighting:** Out-of-the-box support for dozens of languages.
-- **Auto-completion:** IntelliSense suggestions based on context.
-- **Themes:** Toggled automatically or via settings (Dark/Light).
-- **Multi-cursor editing:** Hold \`Alt\` and click to place multiple cursors.
-
-## Find & Replace
-Use \`Ctrl + F\` to find text within the current file, and \`Ctrl + H\` to replace text.
-    `
-  },
-  {
-    id: "file-explorer",
-    label: "6. File Explorer",
-    content: `
-# 6. File Explorer
-
-## Managing your Workspace
-- **Create file / folder:** Use the icons at the top of the explorer.
-- **Rename:** Right-click a file and select "Rename" (or press \`F2\`).
-- **Delete:** Right-click and select "Delete".
-- **Download workspace:** Export your entire project as a ZIP file.
-- **Upload files:** Drag and drop files from your OS into the explorer.
-    `
+See **Persistence** for how and when data moves between these layers.
+`,
   },
   {
     id: "terminal",
-    label: "7. Terminal",
+    group: "Using the IDE",
+    label: "Terminal & running code",
     content: `
-# 7. Terminal
+# Terminal & running code
 
-The built-in terminal (xterm.js) connects directly to the execution sandbox.
+## The terminal
+Each terminal tab runs \`jsh\`, the WebContainer shell, entirely in your browser. It supports \`npm\`, \`npx\`, \`node\` and the usual shell basics (\`ls\`, \`cd\`, \`cat\`, \`mkdir\`, …). Open more shells with **+**.
 
-## Usage
-- **Installing packages:** Use standard package managers like \`npm\` or \`pip\`.
-- **Running applications:** Start dev servers or run scripts directly.
+> [!WARNING] WebContainers run Node.js only. Python, Java and C++ binaries are not available in the in-browser terminal.
 
-> [!INFO]
-> **Example Commands:**
-> \`\`\`bash
-> npm install
-> npm run dev
-> python main.py
-> g++ main.cpp && ./a.out
-> java Main
-> \`\`\`
-    `
-  },
-  {
-    id: "code-execution",
-    label: "8. Code Execution",
-    content: `
-# 8. Code Execution
+## What Run Code does
 
-## Execution Environments
-- **WebContainers (Client-side):** Runs Node.js, React, and Vite environments directly in the browser's WebAssembly sandbox.
-- **Subprocess Compilers (Server-side):** Compiles and runs Python, C++, and Java on secure cloud host containers.
-
-## Compile vs Run
-You can run code via the terminal manually, or use the **Run** button (if configured) to automatically execute the current active file.
-
-## Input/Output Console
-Standard output (stdout) and standard error (stderr) are streamed in real-time to the terminal panel.
-    `
-  },
-  {
-    id: "version-control",
-    label: "9. Version Control",
-    content: `
-# 9. Version Control
-
-## Git Integration
-CodeFusionAI includes built-in Git capabilities to manage your project history.
-
-- **Commit:** Save your changes with a descriptive message.
-- **Push / Pull:** Sync your local workspace with remote repositories like GitHub.
-- **Branches:** Create isolated branches for feature development.
-- **Merge & Conflict Resolution:** Visually resolve conflicts if multiple peers edit the same lines.
-    `
-  },
-  {
-    id: "keyboard-shortcuts",
-    label: "10. Keyboard Shortcuts",
-    content: `
-# 10. Keyboard Shortcuts
-
-| Shortcut | Action |
+| Situation | Command executed |
 | --- | --- |
-| \`Ctrl + S\` | Save |
-| \`Ctrl + F\` | Find |
-| \`Ctrl + H\` | Replace |
-| \`Ctrl + /\` | Toggle Comment |
-| \`Ctrl + Space\` | IntelliSense |
-| \`Alt + Shift + F\` | Format Document |
-    `
+| The workspace has a \`package.json\`, first run or changed | \`npm install && npm run dev\` |
+| The workspace has a \`package.json\`, already installed | \`npm run dev\` |
+| No \`package.json\`, active file is JavaScript | \`node <active file>\` |
+
+The command runs in the folder that contains \`package.json\`.
+
+## Live preview
+When a dev server starts listening, WebContainers report its URL and the **Preview** panel opens beside the editor. Drag its edge to resize it, or use the toolbar button to show or hide it.
+
+## Server-side execution
+The backend also exposes \`POST /api/execute\` for single-file JavaScript, Python, C++ and Java programs. It runs them with a 10-second timeout on the API host, so it needs those toolchains installed there.
+`,
   },
   {
-    id: "project-templates",
-    label: "11. Project Templates",
+    id: "ai",
+    group: "Using the IDE",
+    label: "AI assistant",
     content: `
-# 11. Project Templates
+# AI assistant
 
-Speed up your workflow using our built-in starter templates:
+CodeFusionAI uses **Google Gemini (\`gemini-2.5-flash\`)** through the backend, so the API key never reaches the browser.
 
-- **React:** Standard Vite + React template.
-- **Node.js:** Express API boilerplate.
-- **Python:** Basic Python script environment.
-- **C++:** Minimal C++ compiler setup.
-- **Java:** Standard Java class structure.
-- **Vanilla:** Basic HTML/CSS/JS for simple web pages.
-    `
+## Inside a room
+The AI panel sits on the right side of the workspace (toggle it from the toolbar). The assistant automatically gets:
+
+- the **active file's** name, language and contents
+- any **selected code** in the editor
+- the recent conversation
+
+**Suggested prompts** cover the common cases: *Explain this code*, *Find bugs*, *Optimize this function* and *Generate test cases*. Every code block has **Copy**, and **Apply to file** writes it into the editor as one undoable edit.
+
+## AI Assistant page
+Open **AI Assistant** from the sidebar for a full-page chat that isn't tied to a room. Chats are grouped by date, searchable, and saved in your browser.
+
+## Endpoints
+
+| Route | Purpose |
+| --- | --- |
+| \`POST /api/ai/chat\` | Free-form chat (\`{ message, history? }\`) |
+| \`POST /api/ai/review\` | Code review (\`{ code, language }\`) |
+| \`POST /api/ai/explain\` | Explanation (\`{ code, language }\`) |
+| \`POST /api/ai/optimize\` | Optimisation suggestions (\`{ code, language }\`) |
+
+> [!TIP] Select just the function you care about before asking. Shorter context gives sharper answers.
+`,
   },
   {
-    id: "settings",
-    label: "12. Settings",
+    id: "collaboration",
+    group: "Using the IDE",
+    label: "Collaboration",
     content: `
-# 12. Settings
+# Collaboration
 
-Customize your workspace by clicking the Settings gear icon:
+## Presence
+The **Collaborators** panel and the status bar show who is online. Each user gets a colour, and the panel shows which file each person has open.
 
-- **Theme:** Switch between Dark and Light mode.
-- **Font Size & Tab Size:** Adjust editor typography.
-- **Auto Save:** Toggle whether files save automatically on delay.
-- **AI Preferences:** Set default models and strictness.
-- **Notifications:** Manage alerts for messages and room joins.
-    `
+## Live cursors
+Other people's cursors appear in the editor in their colour, labelled with their name, and update as they move.
+
+## How edits propagate
+1. You type. Monaco is bound to the file's **Yjs** text, so the change becomes a small binary CRDT update.
+2. The client emits \`yjs-update\`; the server applies it to the room's authoritative document and relays it to everyone else.
+3. Within ~400 ms the server folds the document into the room's Redis hash, marks the room *dirty*, and counts one edit token.
+
+Because Yjs is a CRDT, two people typing in the **same** file at the same time converge to the same text, with no locks and no lost keystrokes. Creating, renaming and deleting files still uses \`code-change\`, which the server reconciles against the document.
+`,
   },
   {
-    id: "faq",
-    label: "13. Frequently Asked Questions",
+    id: "history",
+    group: "Using the IDE",
+    label: "Version history",
     content: `
-# 13. Frequently Asked Questions
+# Version history
 
-**1. How do I invite collaborators?**
-Simply copy the Room ID from the Dashboard or Editor header and send it to them.
+Every save to S3 records a **snapshot** of the whole workspace, so you can look back and undo mistakes.
 
-**2. How do I recover deleted files?**
-Currently, deleted files cannot be recovered unless they were pushed to a remote Git repository.
+## Browsing versions
+Open the **History** panel from the activity bar. Each version shows who saved it, when, how many files it contains, and why it was taken:
 
-**3. Can I work offline?**
-No, real-time collaboration and cloud execution require an active internet connection.
+| Badge | Meaning |
+| --- | --- |
+| **Auto** | Saved by the token-bucket flusher after edits |
+| **Manual** | Someone pressed **Ctrl S** |
+| **Restore** | The workspace was restored from an older version |
 
-**4. Is my code private?**
-Yes, if you select "Private Room" during creation, only those with the Room ID can join.
+## Restoring
+Pick a version and choose **Restore**. The live workspace is replaced for everyone in the room, and the restore is itself saved as a new version, so it can be undone too.
 
-**5. How does AI use my code?**
-AI features send snippets of your code to the LLM solely for inference. Your code is not used to train public models.
-
-*(More FAQs will be added as community feedback grows!)*
-    `
+## How it works
+- A snapshot is only written when the content hash (SHA-256) changes, so idle rooms don't create duplicates.
+- The files are stored as one JSON object in S3 at \`snapshots/<roomId>/v<n>.json\`, with metadata in MongoDB.
+- The newest **50** versions are kept per room.
+`,
   },
   {
-    id: "troubleshooting",
-    label: "14. Troubleshooting",
+    id: "shortcuts",
+    group: "Using the IDE",
+    label: "Keyboard shortcuts",
     content: `
-# 14. Troubleshooting
+# Keyboard shortcuts
 
-> [!WARNING]
-> **Common Issues & Solutions**
+| Shortcut | Where | Action |
+| --- | --- | --- |
+| **Ctrl K** / **⌘ K** | Dashboard | Open the command palette |
+| **Ctrl S** / **⌘ S** | Room | Save the workspace to S3 now |
+| **Ctrl F** | Editor | Find |
+| **Ctrl H** | Editor | Find & replace |
+| **Ctrl /** | Editor | Toggle line comment |
+| **Alt ↑ / ↓** | Editor | Move line up / down |
+| **Alt Click** | Editor | Add a cursor |
+| **Ctrl D** | Editor | Select next occurrence |
+| **F1** | Editor | Monaco command palette |
+| **↑ / ↓**, **Enter**, **Esc** | Command palette | Navigate, run, close |
+`,
+  },
 
-- **Cannot connect to room:** Check your internet connection or verify the Room ID.
-- **AI not responding:** The AI service might be experiencing high traffic. Try again in a few moments.
-- **Terminal not opening:** Ensure your browser supports WebContainers (requires secure context / HTTPS).
-- **Build errors:** Check the terminal output for missing dependencies.
-- **Dependency installation failed:** Try running \`npm cache clean --force\` and then \`npm install\`.
-- **Git authentication failed:** Ensure your personal access token is valid and hasn't expired.
-    `
+  // ─── Architecture ──────────────────────────────────────────────────────────
+  {
+    id: "architecture",
+    group: "Architecture",
+    label: "System overview",
+    content: `
+# System overview
+
+\`\`\`text
+ Browser (React 19 + Vite)                     API server (Express 5 + Socket.IO)
+ ┌──────────────────────────────┐   REST    ┌──────────────────────────────────┐
+ │ Monaco · xterm · WebContainer│ ────────▶ │ routes → controllers → services  │
+ │ Firebase Auth · IndexedDB    │ ◀──────── │                                  │
+ │ socket.io-client             │ WebSocket │ socketController (rooms, cursors)│
+ └──────────────────────────────┘ ◀──────▶ └───────┬──────────┬──────────┬─────┘
+                                                   │          │          │
+                                              Redis (live) MongoDB    Amazon S3
+                                              workspace,   rooms,     file
+                                              token bucket files,     contents
+                                                           profiles
+                                                    Gemini API (AI routes)
+\`\`\`
+
+## Frontend
+| Concern | Implementation |
+| --- | --- |
+| Routing | \`react-router-dom\`: \`/\` landing, \`/login\`, \`/dashboard\`, \`/room/:roomId\` (the last two are protected) |
+| Auth | Firebase Authentication (Google + email/password) through \`AuthContext\` |
+| Editor | \`@monaco-editor/react\` with the custom \`cf-dark\` theme |
+| Runtime | \`@webcontainer/api\` (\`services/webcontainer.js\`) |
+| Terminal | \`xterm\` + \`xterm-addon-fit\` |
+| Local cache | IndexedDB via \`idb\` (\`services/db.js\`) |
+
+## Backend layers
+- **routes/** map HTTP paths to controllers and validation middleware.
+- **controllers/** stay thin; \`asyncHandler\` forwards errors to the central \`errorHandler\`.
+- **services/** own business logic. \`workspace.service.js\` is the only service that coordinates Redis, S3 and MongoDB together.
+- **config/** sets up MongoDB, Redis (with an in-memory fallback), AWS and Gemini clients.
+`,
+  },
+  {
+    id: "persistence",
+    group: "Architecture",
+    label: "Persistence & token bucket",
+    content: `
+# Persistence & token bucket
+
+Writing to S3 on every keystroke would be slow and expensive. Instead, Redis absorbs edits and a **token bucket** decides when to flush.
+
+## Loading a workspace
+\`loadWorkspace(roomId)\` reads in this order:
+
+1. **Redis**: the hash \`room:<id>:files\`. On a hit it returns immediately.
+2. **MongoDB + S3**: on a miss it lists \`File\` documents for the room, downloads each object from S3, then repopulates Redis.
+3. **Legacy migration**: rooms that stored files inline on the \`Room\` document are moved to S3 the first time they're opened.
+
+## Flush triggers
+
+| Trigger | Rule |
+| --- | --- |
+| Edit threshold | After **10** edit tokens (\`flushEditThreshold\`) |
+| Idle timeout | Unsaved edits idle for **10 s** (\`idleFlushTimeoutMs\`) |
+| Manual save | **Ctrl S** bypasses the rate limiter |
+| Background sweep | A sweep runs every **30 s** over the \`dirty_rooms\` set |
+
+## Rate limiting
+Each room has a bucket of S3 upload tokens: capacity **5**, refilled at **1 token per 5 s**. An automatic flush spends one token. When the bucket is empty, the flush is skipped and retried later. Manual saves always go through.
+
+## Safety
+- A Redis lock (\`room:<id>:persist:lock\`, \`SET NX EX 60\`) stops two flushes for the same room from interleaving.
+- Workspace hashes expire after **2 hours** idle, and every write refreshes the TTL.
+- If Redis is unreachable, the server switches to an in-memory mock automatically, which is fine for local development.
+`,
+  },
+  {
+    id: "crdt",
+    group: "Architecture",
+    label: "CRDT live editing",
+    content: `
+# CRDT live editing
+
+CodeFusionAI uses [Yjs](https://yjs.dev), a CRDT (conflict-free replicated data type), for text editing.
+
+## Why a CRDT
+Sending the whole file on every keystroke means the last writer wins: two people typing at once overwrite each other. A CRDT gives every character a unique, ordered identity, so concurrent inserts and deletes merge deterministically on every client.
+
+## Topology
+\`\`\`text
+ Client A (Y.Doc) ──yjs-update──▶ Server (authoritative Y.Doc per room) ──▶ Client B
+        ▲                                    │
+        └──────────── yjs-update ────────────┘
+                                             │ debounced 400 ms
+                                             ▼
+                                Redis workspace → token bucket → S3
+\`\`\`
+
+- The server keeps one \`Y.Doc\` per active room: a map from file path to \`Y.Text\`.
+- On join it sends the full state (\`yjs-sync\`); afterwards only incremental updates travel.
+- Structural changes (new, renamed or deleted files) are reconciled against the document, which stays the source of truth for content.
+- Idle documents are dropped from memory five minutes after the last member leaves and rebuilt from storage on the next join.
+`,
   },
   {
     id: "security",
-    label: "15. Security",
+    group: "Architecture",
+    label: "Security",
     content: `
-# 15. Security
+# Security
 
-- **Authentication:** Powered by Firebase Auth for secure login.
-- **Workspace privacy:** Only users with the explicit Room ID can access private rooms.
-- **Encryption:** All WebSocket traffic and database connections are encrypted over HTTPS/WSS.
-- **API key protection:** AI API keys are stored securely on the backend, never exposed to the client.
-    `
+## Authentication
+Every API route except health and the public room list requires a **Firebase ID token** (\`Authorization: Bearer <token>\`). The server verifies the RS256 signature against Google's public keys, plus the issuer and audience, with no service-account secret needed. Sockets present the same token in the handshake.
+
+## Authorization
+- The user ID always comes from the verified token, never from the request body, so nobody can act as someone else.
+- Only a room's owner can close, reopen or delete it.
+- Sockets can only write to rooms they have joined.
+
+## Rate limiting
+A Redis fixed-window limiter protects expensive routes:
+
+| Route | Limit |
+| --- | --- |
+| AI (\`/api/ai/*\`) | 30 requests / minute / user |
+| Code execution | 10 runs / minute / user |
+| Files | 120 requests / minute / user |
+
+Responses include \`RateLimit-*\` headers and \`429\` with \`Retry-After\` when exceeded.
+
+## Input hardening
+File-system paths are resolved and checked so \`../\` can't escape a room's directory, and the public room list exposes only display fields.
+`,
   },
   {
-    id: "best-practices",
-    label: "16. Best Practices",
+    id: "data-model",
+    group: "Architecture",
+    label: "Data model",
     content: `
-# 16. Best Practices
+# Data model (MongoDB)
 
-- **Organize projects:** Keep your file structure clean and modular.
-- **Commit frequently:** Save working states to Git regularly.
-- **Use branches:** Don't work directly on \`main\` for experimental features.
-- **Review AI suggestions:** Always audit AI-generated code before deploying.
-- **Write meaningful commit messages:** Help your team understand your changes.
-    `
+## Room
+| Field | Type | Notes |
+| --- | --- | --- |
+| \`roomId\` | String | Unique, e.g. \`cfai-ab12-cd34\` |
+| \`name\` | String | Project name |
+| \`ownerId\` / \`ownerName\` | String | Firebase UID and display name |
+| \`template\` | String | \`react\`, \`vue\`, \`node\`, \`vanilla\`, … |
+| \`status\` | \`active\` \\| \`closed\` | |
+| \`accessType\` | \`public\` \\| \`private\` | |
+| \`description\` | String | Shown in the public hub |
+| \`participants\` | Array | Users who have joined |
+| \`createdAt\` / \`updatedAt\` | Date | Mongoose timestamps |
+
+## File
+One document per file or folder: \`roomId\`, \`name\`, \`path\`, \`type\` (\`file\` \\| \`folder\`), \`s3Key\`, \`extension\`, \`language\` and size. Contents live in S3 under \`<ownerId>/<roomId>/<path>\`.
+
+## UserProfile
+\`userId\`, \`displayName\` and \`photoURL\`. These sync with the Firebase profile on Dashboard load and when you save settings.
+`,
+  },
+
+  // ─── Reference ─────────────────────────────────────────────────────────────
+  {
+    id: "rest-api",
+    group: "Reference",
+    label: "REST API",
+    content: `
+# REST API
+
+Base URL: \`VITE_BACKEND_URL\` (default \`http://localhost:5000\`). All bodies are JSON. Unless marked public, routes need \`Authorization: Bearer <Firebase ID token>\`; see **Security**.
+
+## Health
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | \`/\` | Service status and timestamp |
+
+## Rooms: \`/api/rooms\`
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | \`/public\` | List public rooms (public) |
+| GET | \`/user/:userId\` | Rooms a user owns or joined (newest first) |
+| GET | \`/:roomId/history\` | List saved versions (newest first) |
+| GET | \`/:roomId/history/:version\` | Files of one version |
+| POST | \`/:roomId/close\` | Close a room (owner only) |
+| POST | \`/:roomId/resume\` | Reopen a room (owner only) |
+| DELETE | \`/:roomId\` | Delete a room, its files and its history (owner only) |
+
+## Files: \`/api/files\`
+| Method | Path | Description |
+| --- | --- | --- |
+| POST | \`/upload-url\` | Get a presigned S3 upload URL |
+| POST | \`/register\` | Register uploaded file metadata |
+| POST | \`/folder\` | Create a folder |
+| GET | \`/room/:roomId\` | List a room's files |
+| GET | \`/download/:id\` | Download a file |
+| PUT | \`/:id\` | Rename or move a file |
+| DELETE | \`/:id\` | Delete a file |
+
+## Users: \`/api/users\`
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | \`/profile/:userId\` | Get a profile |
+| POST | \`/profile\` | Create or update your own profile (\`{ displayName, photoURL }\`) |
+
+## AI: \`/api/ai\`
+\`POST /chat\`, \`/review\`, \`/explain\`, \`/optimize\`. See **AI assistant**.
+
+## Execute: \`/api/execute\`
+| Method | Path | Body |
+| --- | --- | --- |
+| POST | \`/\` | \`{ language: "javascript" \\| "python" \\| "cpp" \\| "java", code }\` |
+`,
   },
   {
-    id: "changelog",
-    label: "17. Changelog",
+    id: "socket-events",
+    group: "Reference",
+    label: "Socket events",
     content: `
-# 17. Changelog
+# Socket events
 
-### v1.2 (Current)
-- WebContainer client-side execution improvements.
-- GeeksforGeeks-style Light Mode Documentation.
+## Client → server
+| Event | Payload | Effect |
+| --- | --- | --- |
+| \`create-room\` | \`{ roomId, roomName, ownerId, username, photoURL, template, files, accessType, description }\` | Creates the room and seeds template files to S3 |
+| \`join-room\` | \`{ roomId, userId, username, photoURL }\` | Joins; the server replies with \`receive-code\` carrying the workspace |
+| \`yjs-update\` | \`{ roomId, update }\` (binary) | CRDT text edit; applied and relayed |
+| \`code-change\` | \`{ roomId, code }\` | Structural change (create, rename, delete); reconciled with the CRDT doc |
+| \`sync-workspace\` | \`{ code }\` | Caches silently (no broadcast) |
+| \`save-workspace\` | — | Forces a flush to S3 |
+| \`restore-version\` | \`{ version }\` + ack | Restores a snapshot for the whole room |
+| \`update-presence\` | \`{ roomId, activeFile }\` | Updates which file you have open |
+| \`cursor-change\` | \`{ roomId, position }\` | Shares your cursor position |
+| \`close-room\` | \`{ roomId, userId }\` | Owner closes the room |
 
-### v1.1
-- Workspace explorer added.
-- Integrated Terminal support.
-- Git integration base functionality.
-
-### v1.0
-- Initial release.
-- Real-time collaboration via Socket.io.
-- Basic AI Assistant integrations.
-    `
+## Server → client
+| Event | Meaning |
+| --- | --- |
+| \`welcome\` | Sent on connect |
+| \`room-created\` / \`room-joined\` | Your create or join succeeded (payload: the room ID) |
+| \`user-joined\` | Someone else entered the room |
+| \`yjs-sync\` | Full CRDT state, sent on join |
+| \`yjs-update\` | Incremental CRDT edit from a collaborator |
+| \`version-restored\` | \`{ version, by }\` after a restore |
+| \`receive-code\` | The full workspace (JSON). Sent to you on join, then whenever another user edits |
+| \`workspace-saved\` | \`{ success, timestamp, reason: "threshold" \\| "manual" }\` |
+| \`room-users\` | Current participants and their active files |
+| \`cursor-update\` | Another user's cursor moved |
+| \`join-error\` / \`room-error\` | The room doesn't exist, is closed, or the request failed |
+| \`room-closed\` | The owner closed the room |
+`,
   },
   {
-    id: "contact",
-    label: "18. Contact & Support",
+    id: "configuration",
+    group: "Reference",
+    label: "Configuration",
     content: `
-# 18. Contact & Support
+# Configuration
 
-Need help? Reach out to us:
+## Backend: \`Backend/.env\`
+| Variable | Required | Description |
+| --- | --- | --- |
+| \`PORT\` | No | API port (default \`5000\`) |
+| \`FRONTEND_URL\` | No | Allowed frontend origin |
+| \`MONGO_URI\` | Yes | MongoDB connection string |
+| \`REDIS_URL\` | No | Defaults to \`redis://redis:6379\`; falls back to in-memory if unreachable |
+| \`GEMINI_API_KEY\` | Yes | Google API key with the **Generative Language API** allowed (create one in [Google AI Studio](https://aistudio.google.com/apikey)) |
+| \`FIREBASE_PROJECT_ID\` | Yes | Used to verify Firebase ID tokens (not a secret) |
+| \`AWS_ACCESS_KEY_ID\` / \`AWS_SECRET_ACCESS_KEY\` | Yes | S3 credentials |
+| \`AWS_REGION\` / \`AWS_BUCKET_NAME\` | Yes | S3 bucket location |
 
-- **Email:** support@codefusionai.com
-- **GitHub Repository:** [CodeFusionAI GitHub](https://github.com/Manudeep06/CodeFusionAi)
-- **Issue Reporting:** Create an issue on our GitHub tracker.
-- **Feature Requests:** Drop your ideas in our community discussion board.
-    `
-  }
+## Frontend: \`Frontend/.env\`
+| Variable | Description |
+| --- | --- |
+| \`VITE_BACKEND_URL\` | API base URL (default \`http://localhost:5000\`) |
+| \`VITE_API_URL\` | Override for the AI endpoint base |
+| \`VITE_FIREBASE_*\` | Firebase web config: API key, auth domain, project ID, storage bucket, sender ID, app ID, measurement ID |
+
+> [!WARNING] Never commit \`.env\` files. Rotate any key that has been shared.
+`,
+  },
+  {
+    id: "local-dev",
+    group: "Reference",
+    label: "Local development",
+    content: `
+# Local development
+
+## Prerequisites
+- Node.js 20+
+- A MongoDB database (local or Atlas)
+- Optional: Redis (\`docker run -p 6379:6379 redis\`) and an S3 bucket
+
+## Install and run
+\`\`\`bash
+npm install            # root: installs concurrently
+npm run install:all    # Backend + Frontend dependencies
+npm run dev            # API on :5000 and Vite on :5173
+\`\`\`
+
+Or run them separately with \`npm run dev:backend\` and \`npm run dev:frontend\`.
+
+## Project layout
+\`\`\`text
+Backend/src
+  config/       mongo, redis (+ mock), aws, gemini clients
+  controllers/  HTTP + socket handlers
+  middleware/   validation, central error handler
+  models/       Room, File, UserProfile
+  routes/       /api/* routers
+  services/     workspace, redis, s3, room, file, gemini, execute
+  utils/        redis keys + token bucket config, helpers
+Frontend/src
+  pages/        Landing, Login, Dashboard, Room
+  components/   ui/ (toast, dialogs, palette), Room/, AIAssist/, Docs/, Sessions/
+  services/     socket, webcontainer, templates, IndexedDB, AI client
+\`\`\`
+
+> [!NOTE] WebContainers need cross-origin isolation. The Vite config sends the required \`COOP\`/\`COEP\` headers in dev and preview.
+`,
+  },
+
+  // ─── Help ──────────────────────────────────────────────────────────────────
+  {
+    id: "troubleshooting",
+    group: "Help",
+    label: "Troubleshooting",
+    content: `
+# Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| "Room not found" when joining | Wrong ID, or the room was deleted | Check the ID with the owner; it's case-sensitive |
+| Terminal stuck on *Booting WebContainer…* | The page isn't cross-origin isolated, or the browser is unsupported | Use a recent Chromium-based browser or Firefox, and reload |
+| Preview stays blank | The dev server hasn't started or is still installing | Watch the terminal for \`ready\` / \`Local:\` |
+| Badge stays **Unsaved** | Flushes are rate-limited or S3 is unreachable | Press **Ctrl S**; check the server log for S3 errors |
+| AI says the key was rejected or isn't allowed | \`GEMINI_API_KEY\` is missing or invalid, or the key's API restrictions block the Generative Language API | In Google Cloud Console → APIs & Services, enable **Generative Language API** and allow it on the key; or create a key in AI Studio |
+| AI says it's over quota | Free-tier limit reached | Wait a minute, or enable billing on the key's project |
+| Google sign-in popup closes | Popup blocked or domain not authorised | Allow popups; add the domain in Firebase → Authentication → Settings |
+| Server log shows \`Redis client warning\` | No Redis at \`REDIS_URL\` | Expected locally; the in-memory fallback is active |
+`,
+  },
+  {
+    id: "faq",
+    group: "Help",
+    label: "FAQ",
+    content: `
+# FAQ
+
+**Is my code private?**
+Private rooms aren't listed anywhere, but anyone who has the room ID can join. Share IDs only with people you trust, and close the room when you're done.
+
+**What happens if the server restarts?**
+Anything already flushed to S3 is safe. On the next join the workspace is rebuilt from MongoDB + S3. Press **Ctrl S** before a planned restart to flush the latest edits.
+
+**Can I use Python or Java?**
+You can edit any language. The in-browser runtime is Node.js only; other languages run through the server-side \`/api/execute\` endpoint if the host has the toolchains.
+
+**How many people can join a room?**
+There's no hard limit. Rooms are Socket.IO rooms, so practical limits depend on the server.
+
+**Can I export my project?**
+Yes. Use **Download** in the Explorer to get a ZIP of the whole workspace.
+`,
+  },
 ];
+
+export const docsGroups = [...new Set(docsSections.map((s) => s.group))];

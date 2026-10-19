@@ -78,8 +78,27 @@ class MockRedis {
       this.store.delete(key);
       this.timers.delete(key);
     }, seconds * 1000);
+    timer.unref?.();
     this.timers.set(key, timer);
     return 1;
+  }
+
+  async incr(key) {
+    const next = (parseInt(this.store.get(key), 10) || 0) + 1;
+    this.store.set(key, String(next));
+    return next;
+  }
+
+  async ttl(key) {
+    return this.store.has(key) ? (this.timers.has(key) ? 1 : -1) : -2;
+  }
+
+  async hincrby(key, field, increment) {
+    if (!this.store.has(key) || !(this.store.get(key) instanceof Map)) this.store.set(key, new Map());
+    const hash = this.store.get(key);
+    const next = (parseInt(hash.get(field), 10) || 0) + Number(increment);
+    hash.set(field, String(next));
+    return next;
   }
 
   async keys(pattern) {
@@ -91,16 +110,19 @@ class MockRedis {
   // ── Hash Operations (HSET / HGET / HGETALL / HDEL) ────────────────────────
   // Used for per-file workspace storage: each file path = one hash field.
 
-  async hset(key, field, value) {
+  /** hset(key, field, value[, field2, value2, ...]) — same multi-pair form as Redis. */
+  async hset(key, ...pairs) {
     if (!this.store.has(key)) {
       this.store.set(key, new Map());
     }
     const hash = this.store.get(key);
-    if (hash instanceof Map) {
-      hash.set(String(field), String(value));
-      return 1;
+    if (!(hash instanceof Map)) return 0;
+    let added = 0;
+    for (let i = 0; i + 1 < pairs.length; i += 2) {
+      if (!hash.has(String(pairs[i]))) added++;
+      hash.set(String(pairs[i]), String(pairs[i + 1]));
     }
-    return 0;
+    return added;
   }
 
   async hget(key, field) {
@@ -111,7 +133,8 @@ class MockRedis {
 
   async hgetall(key) {
     const hash = this.store.get(key);
-    if (!(hash instanceof Map) || hash.size === 0) return null;
+    // Real Redis returns an empty object (not null) for a missing hash.
+    if (!(hash instanceof Map) || hash.size === 0) return {};
     const result = {};
     for (const [k, v] of hash.entries()) result[k] = v;
     return result;
@@ -235,14 +258,26 @@ class RedisWrapper {
     return this.client.expire(key, seconds);
   }
 
+  async incr(key) {
+    return this.client.incr(key);
+  }
+
+  async ttl(key) {
+    return this.client.ttl(key);
+  }
+
+  async hincrby(key, field, increment) {
+    return this.client.hincrby(key, field, increment);
+  }
+
   async keys(pattern) {
     return this.client.keys(pattern);
   }
 
   // ── Hash Operations ────────────────────────────────────────────────────────
 
-  async hset(key, field, value) {
-    return this.client.hset(key, field, value);
+  async hset(key, ...pairs) {
+    return this.client.hset(key, ...pairs);
   }
 
   async hget(key, field) {

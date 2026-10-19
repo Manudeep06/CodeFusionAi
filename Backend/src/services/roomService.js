@@ -1,11 +1,15 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file contains the core logic for adding users to rooms, saving room states, and managing collaborations.
  */
 
 import Room from "../models/Room.js";
 import AppError from "../utils/AppError.js";
+import File from "../models/File.js";
 import { initializeWorkspaceFiles } from "./workspace.service.js";
+import { deleteS3Prefix } from "./s3.service.js";
+import { deleteRoomSnapshots } from "./history.service.js";
+import { evictWorkspaceCache, clearRoomDirty } from "./redis.service.js";
 
 const INITIAL_WORKSPACE = JSON.stringify([]);
 
@@ -86,8 +90,9 @@ export const getUserSessions = async (userId) => {
  * @returns {Promise<Array>}
  */
 export const getPublicRooms = async () => {
-  return await Room.find({ accessType: "public" })
-    .select("-files")
+  // Public listing: expose only what the hub displays (no owner UID or participant list).
+  return await Room.find({ accessType: "public", status: "active" })
+    .select("roomId name description ownerName template status accessType createdAt updatedAt lastActive")
     .sort({ lastActive: -1 });
 };
 
@@ -141,7 +146,7 @@ export const resumeRoom = async (roomId, userId) => {
 
 /**
  * Permanently delete a room from MongoDB (owner only).
- * NOTE: This does NOT delete S3 files — call workspace.service separately if needed.
+ * Removes the room, its file metadata, its S3 objects, its version history and its cache.
  *
  * @param {string} roomId
  * @param {string} userId
@@ -153,6 +158,13 @@ export const deleteRoom = async (roomId, userId) => {
   if (room.ownerId !== userId) {
     throw new AppError("Unauthorized: Only the room owner can delete this session.", 403);
   }
+  await Promise.allSettled([
+    deleteS3Prefix(`users/${room.ownerId || "default_user"}/${roomId}/`),
+    deleteRoomSnapshots(roomId),
+    File.deleteMany({ roomId }),
+    evictWorkspaceCache(roomId),
+    clearRoomDirty(roomId),
+  ]);
   return await Room.deleteOne({ roomId });
 };
 

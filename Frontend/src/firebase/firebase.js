@@ -8,6 +8,8 @@ import {
   signOut,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
   onAuthStateChanged as firebaseOnAuthStateChanged,
 } from "firebase/auth";
 
@@ -67,10 +69,18 @@ export const logout = async () => {
   return await signOut(auth);
 };
 
-// Register
-export const registerUser = async (email, password) => {
+// Register — stores the display name on the Firebase profile right away
+export const registerUser = async (email, password, displayName) => {
   if (!auth) firebaseUnavailable();
-  return await createUserWithEmailAndPassword(auth, email, password);
+  const credential = await createUserWithEmailAndPassword(auth, email, password);
+  if (displayName) await updateProfile(credential.user, { displayName });
+  return credential;
+};
+
+// Password reset email (Firebase sends it; the link opens Firebase's hosted page)
+export const resetPassword = async (email) => {
+  if (!auth) firebaseUnavailable();
+  return await sendPasswordResetEmail(auth, email);
 };
 
 // Login

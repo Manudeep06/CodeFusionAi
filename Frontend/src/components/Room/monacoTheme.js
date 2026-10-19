@@ -1,0 +1,50 @@
+/** Light Monaco theme matching the app tokens. Pass as <Editor beforeMount>. */
+export function defineMonacoTheme(monaco) {
+  monaco.editor.defineTheme("cf-light", {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "comment", foreground: "94a3b8", fontStyle: "italic" },
+      { token: "keyword", foreground: "7c3aed" },
+      { token: "string", foreground: "15803d" },
+      { token: "number", foreground: "c2410c" },
+      { token: "regexp", foreground: "be185d" },
+      { token: "type", foreground: "b45309" },
+      { token: "type.identifier", foreground: "b45309" },
+      { token: "identifier", foreground: "0f172a" },
+      { token: "delimiter", foreground: "64748b" },
+      { token: "tag", foreground: "2563eb" },
+      { token: "attribute.name", foreground: "7c3aed" },
+      { token: "attribute.value", foreground: "15803d" },
+    ],
+    colors: {
+      "editor.background": "#ffffff",
+      "editor.foreground": "#0f172a",
+      "editorLineNumber.foreground": "#cbd5e1",
+      "editorLineNumber.activeForeground": "#475569",
+      "editor.lineHighlightBackground": "#f8fafc",
+      "editor.lineHighlightBorder": "#00000000",
+      "editor.selectionBackground": "#dbeafe",
+      "editor.inactiveSelectionBackground": "#eff6ff",
+      "editor.selectionHighlightBackground": "#e0e7ff80",
+      "editorCursor.foreground": "#2563eb",
+      "editorIndentGuide.background1": "#f1f5f9",
+      "editorIndentGuide.activeBackground1": "#cbd5e1",
+      "editorWidget.background": "#ffffff",
+      "editorWidget.border": "#e2e8f0",
+      "editorSuggestWidget.background": "#ffffff",
+      "editorSuggestWidget.border": "#e2e8f0",
+      "editorSuggestWidget.selectedBackground": "#eff6ff",
+      "editorGutter.background": "#ffffff",
+      "minimap.background": "#ffffff",
+      "scrollbarSlider.background": "#0f172a14",
+      "scrollbarSlider.hoverBackground": "#0f172a26",
+      "diffEditor.insertedTextBackground": "#16a34a22",
+      "diffEditor.removedTextBackground": "#dc262622",
+      "diffEditor.insertedLineBackground": "#f0fdf4",
+      "diffEditor.removedLineBackground": "#fef2f2",
+    },
+  });
+}
+
+export const MONACO_THEME = "cf-light";

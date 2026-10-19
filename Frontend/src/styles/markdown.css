@@ -1,0 +1,31 @@
+/* Assistant reply typography (used by the AI page and the in-room AI panel) */
+.md { color: var(--color-ink-soft); font-size: 0.95rem; line-height: 1.75; min-width: 0; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md p { margin: 0 0 0.75rem; }
+.md strong { color: var(--color-ink); font-weight: 600; }
+.md h1, .md h2, .md h3 { color: var(--color-ink); font-size: 1.02rem; font-weight: 600; margin: 1.1rem 0 0.5rem; }
+.md ul, .md ol { margin: 0 0 0.75rem; padding-left: 1.3rem; }
+.md ul { list-style: disc; }
+.md ol { list-style: decimal; }
+.md li { margin: 0.25rem 0; }
+.md a { color: var(--color-accent); text-decoration: underline; text-underline-offset: 3px; }
+.md blockquote { border-left: 3px solid var(--color-accent-ring); color: var(--color-ink-soft); margin: 0 0 0.75rem; padding-left: 0.9rem; }
+.md .md-inline { background: var(--color-paper-sunken); border: 1px solid var(--color-rule); border-radius: 6px; color: var(--color-ink); font-family: var(--font-mono); font-size: 0.84em; padding: 0.05em 0.35em; }
+.md-table { border: 1px solid var(--color-rule); border-radius: 10px; margin: 0 0 0.75rem; overflow-x: auto; }
+.md-table table { border-collapse: collapse; font-size: 0.85rem; width: 100%; }
+.md-table th { background: var(--color-paper-muted); color: var(--color-ink); font-weight: 600; text-align: left; }
+.md-table th, .md-table td { border-bottom: 1px solid var(--color-rule); padding: 0.5rem 0.75rem; }
+.md-table tr:last-child td { border-bottom: 0; }
+
+.md-code { border: 1px solid var(--color-rule); border-radius: 12px; margin: 0.4rem 0 0.9rem; overflow: hidden; }
+.md-code header { align-items: center; background: var(--color-paper-muted); border-bottom: 1px solid var(--color-rule); color: var(--color-ink-faint); display: flex; font-size: 0.78rem; gap: 0.45rem; padding: 0.4rem 0.5rem 0.4rem 0.85rem; }
+.md-code-actions { display: flex; gap: 0.35rem; margin-left: auto; }
+.md-code-actions button {
+  align-items: center; background: var(--color-paper); border: 1px solid var(--color-rule); border-radius: 7px; color: var(--color-ink-soft); cursor: pointer;
+  display: inline-flex; font-size: 0.75rem; gap: 0.3rem; padding: 0.2rem 0.55rem;
+}
+.md-code-actions button:hover { border-color: var(--color-rule-strong); color: var(--color-ink); }
+.md-code-actions button.is-primary { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
+.md-code-actions button.is-primary:hover { background: var(--color-accent-hover); }
+.md-code > div { overflow-x: auto; }

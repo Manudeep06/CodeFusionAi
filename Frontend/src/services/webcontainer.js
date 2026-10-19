@@ -159,7 +159,7 @@ export const checkNodeModulesExist = async (dirPath) => {
     const resolvedPath = dirPath || '.';
     const files = await instance.fs.readdir(resolvedPath);
     return files.includes('node_modules');
-  } catch (err) {
+  } catch {
     return false;
   }
 };
@@ -182,7 +182,7 @@ export const shouldRunNpmInstall = async (dirPath, currentPackageJsonContent) =>
       return true;
     }
     return false;
-  } catch (err) {
+  } catch {
     return true;
   }
 };

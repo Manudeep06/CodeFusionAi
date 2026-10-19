@@ -1,4 +1,4 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file contains the core logic for talking to the Gemini AI to generate answers or code.
  */
@@ -36,6 +36,16 @@ const callGemini = async (prompt) => {
     return result.response.text();
   } catch (error) {
     console.error("[Gemini] API error:", error.message);
+    const status = error.status || Number((error.message.match(/\[(\d{3}) /) || [])[1]);
+    if (/SERVICE_BLOCKED|PERMISSION_DENIED|has not been used|is disabled/i.test(error.message)) {
+      throw new AppError("The AI service isn't configured correctly: the server's API key isn't allowed to use the Gemini API (enable the Generative Language API for the key).", 503);
+    }
+    if (status === 401 || status === 403 || /API key not valid/i.test(error.message)) {
+      throw new AppError("The AI service isn't configured correctly: the server's Gemini API key was rejected by Google.", 503);
+    }
+    if (status === 429) {
+      throw new AppError("The AI service is over its quota right now. Try again in a minute.", 503);
+    }
     throw new AppError("Failed to generate AI response. Please try again.", 503);
   }
 };

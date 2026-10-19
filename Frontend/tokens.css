@@ -1,26 +1,48 @@
+/* CodeFusionAI — design tokens (light only).
+ * White and slate surfaces, slate ink, one electric-blue accent with an
+ * indigo companion for AI moments. Components read these, never raw hex. */
 :root {
-  --color-paper: oklch(0.99 0.003 240);
-  --color-paper-raised: oklch(1 0 0);
-  --color-paper-muted: oklch(0.965 0.005 240);
-  --color-ink: oklch(0.18 0.012 240);
-  --color-ink-soft: oklch(0.42 0.015 240);
-  --color-ink-faint: oklch(0.64 0.012 240);
-  --color-rule: oklch(0.92 0.006 240);
-  --color-rule-strong: oklch(0.84 0.01 240);
-  --color-accent: oklch(0.56 0.21 275);
-  --color-accent-hover: oklch(0.48 0.22 275);
-  --color-accent-soft: oklch(0.95 0.025 275);
-  --color-accent-ink: oklch(0.99 0.003 240);
-  --color-success: oklch(0.61 0.16 142);
-  --color-danger: oklch(0.58 0.18 22);
-  --color-focus: oklch(0.56 0.21 275);
-  --color-google-blue: oklch(0.57 0.17 254);
-  --color-google-green: oklch(0.62 0.16 145);
-  --color-google-yellow: oklch(0.81 0.16 86);
-  --color-google-red: oklch(0.61 0.2 28);
+  color-scheme: light;
 
-  --font-display: "Outfit", "Inter", system-ui, sans-serif;
-  --font-body: "Outfit", "Inter", system-ui, sans-serif;
+  --color-paper: oklch(1 0 0);                 /* #ffffff page */
+  --color-paper-raised: oklch(1 0 0);          /* cards */
+  --color-paper-muted: oklch(0.984 0.003 248); /* #f8fafc sidebars, table heads */
+  --color-paper-sunken: oklch(0.968 0.007 248);/* #f1f5f9 wells, hovers */
+  --color-paper-glass: oklch(1 0 0 / 0.85);
+  --color-ink: oklch(0.208 0.042 265.8);       /* #0f172a */
+  --color-ink-soft: oklch(0.446 0.043 257);    /* #475569 */
+  --color-ink-faint: oklch(0.554 0.046 257.4); /* #64748b */
+  --color-ink-ghost: oklch(0.704 0.04 256.8);  /* #94a3b8 */
+  --color-rule: oklch(0.928 0.006 264.5);      /* #e5e7eb */
+  --color-rule-strong: oklch(0.869 0.022 252.9); /* #cbd5e1 */
+  --color-accent: oklch(0.546 0.215 262.9);    /* #2563eb */
+  --color-accent-hover: oklch(0.488 0.217 264.4); /* #1d4ed8 */
+  --color-accent-soft: oklch(0.97 0.014 254.6);   /* #eff6ff */
+  --color-accent-ring: oklch(0.882 0.057 254.1);  /* #bfdbfe */
+  --color-accent-ink: oklch(1 0 0);
+  --color-indigo: oklch(0.511 0.262 276.9);    /* #4f46e5 */
+  --color-indigo-soft: oklch(0.962 0.018 272.3); /* #eef2ff */
+  --color-success: oklch(0.627 0.17 149.2);    /* #16a34a */
+  --color-success-soft: oklch(0.982 0.018 155.8);
+  --color-danger: oklch(0.577 0.215 27.3);     /* #dc2626 */
+  --color-danger-soft: oklch(0.971 0.013 17.4);
+  --color-warning: oklch(0.666 0.157 58.3);    /* #d97706 */
+  --color-warning-soft: oklch(0.987 0.022 95.3);
+  --color-focus: oklch(0.546 0.215 262.9);
+  --color-google-blue: #4285f4;
+  --color-google-green: #34a853;
+  --color-google-yellow: #fbbc05;
+  --color-google-red: #ea4335;
+
+  --gradient-brand: linear-gradient(90deg, var(--color-accent), var(--color-indigo));
+  --gradient-text: linear-gradient(90deg, var(--color-accent), var(--color-indigo));
+  --glow-accent: none;
+  --shadow-card: 0 1px 2px oklch(0.208 0.042 265.8 / 0.05);
+  --shadow-hover: 0 8px 24px -12px oklch(0.546 0.215 262.9 / 0.35);
+  --shadow-pop: 0 0 0 1px oklch(0.208 0.042 265.8 / 0.06), 0 12px 32px -8px oklch(0.208 0.042 265.8 / 0.18);
+
+  --font-display: "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
 
   --space-3xs: 0.25rem;
@@ -36,10 +58,10 @@
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
   --text-md: 1rem;
-  --text-lg: 1.25rem;
-  --text-xl: 1.75rem;
-  --text-2xl: 2.5rem;
-  --text-display: clamp(2.5rem, 5vw, 4.75rem);
+  --text-lg: 1.2rem;
+  --text-xl: 1.6rem;
+  --text-2xl: 2.25rem;
+  --text-display: clamp(2.6rem, 5.6vw, 4.5rem);
 
   --radius-sm: 0.5rem;
   --radius-input: 0.625rem;

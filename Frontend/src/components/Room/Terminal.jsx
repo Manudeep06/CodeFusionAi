@@ -28,7 +28,7 @@ const TerminalIcon = ({ className = "w-3.5 h-3.5" }) => (
   </svg>
 );
 
-function SingleTerminalInstance({ id, isActive, theme }) {
+function SingleTerminalInstance({ isActive, theme }) {
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
   const termInstanceRef = useRef(null);
@@ -49,10 +49,10 @@ function SingleTerminalInstance({ id, isActive, theme }) {
       fontSize: 13,
       fontFamily: '"JetBrains Mono", Menlo, Monaco, Consolas, monospace',
       theme: {
-        background: isLight ? "#faf9f6" : "#0d1117",
-        foreground: isLight ? "#0f172a" : "#c9d1d9",
-        cursor: isLight ? "#4f46e5" : "#58a6ff",
-        selectionBackground: isLight ? "rgba(79, 70, 229, 0.25)" : "rgba(88, 166, 255, 0.3)",
+        background: isLight ? "#ffffff" : "#0e0e15",
+        foreground: isLight ? "#0f172a" : "#d6d6e4",
+        cursor: isLight ? "#2563eb" : "#a78bfa",
+        selectionBackground: isLight ? "rgba(37, 99, 235, 0.2)" : "rgba(88, 166, 255, 0.3)",
       },
     });
 
@@ -67,7 +67,7 @@ function SingleTerminalInstance({ id, isActive, theme }) {
       window.requestAnimationFrame(() => {
         try {
           fitAddon.fit();
-        } catch (err) {
+        } catch {
           // ignore fit errors during hidden state
         }
       });
@@ -122,6 +122,9 @@ function SingleTerminalInstance({ id, isActive, theme }) {
         
       } catch (err) {
         term.write(`\r\n\x1b[31mError booting WebContainer: ${err.message}\x1b[0m\r\n`);
+        if (!window.crossOriginIsolated) {
+          term.write(`\x1b[33mThis page isn't cross-origin isolated, which the in-browser runtime requires. Reload the page. If it keeps happening, the server must send Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp for /room.\x1b[0m\r\n`);
+        }
       }
     };
 
@@ -147,10 +150,10 @@ function SingleTerminalInstance({ id, isActive, theme }) {
     if (termInstanceRef.current) {
       const isLight = theme === "light";
       termInstanceRef.current.options.theme = {
-        background: isLight ? "#faf9f6" : "#0d1117",
-        foreground: isLight ? "#0f172a" : "#c9d1d9",
-        cursor: isLight ? "#4f46e5" : "#58a6ff",
-        selectionBackground: isLight ? "rgba(79, 70, 229, 0.25)" : "rgba(88, 166, 255, 0.3)",
+        background: isLight ? "#ffffff" : "#0e0e15",
+        foreground: isLight ? "#0f172a" : "#d6d6e4",
+        cursor: isLight ? "#2563eb" : "#a78bfa",
+        selectionBackground: isLight ? "rgba(37, 99, 235, 0.2)" : "rgba(88, 166, 255, 0.3)",
       };
     }
   }, [theme]);
@@ -161,7 +164,7 @@ function SingleTerminalInstance({ id, isActive, theme }) {
       setTimeout(() => {
         try {
           fitAddonRef.current.fit();
-        } catch (e) {
+        } catch {
           // ignore
         }
       }, 50);
@@ -178,16 +181,14 @@ function SingleTerminalInstance({ id, isActive, theme }) {
 }
 
 function TerminalComponent({ theme }) {
-  const [terminalsList, setTerminalsList] = useState([
-    { id: Date.now(), label: "powershell" }
-  ]);
-  const [activeId, setActiveId] = useState(terminalsList[0].id);
+  const [terminalsList, setTerminalsList] = useState(() => [{ id: 1, label: "jsh" }]);
+  const [activeId, setActiveId] = useState(1);
 
   const addTerminal = () => {
     const newId = Date.now();
     const newTerm = {
       id: newId,
-      label: "powershell"
+      label: "jsh"
     };
     setTerminalsList([...terminalsList, newTerm]);
     setActiveId(newId);

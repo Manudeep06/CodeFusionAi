@@ -10,8 +10,12 @@ import {
   getRoomById,
 } from "../services/roomService.js";
 import { loadWorkspace, persistWorkspaceToS3 } from "../services/workspace.service.js";
+import { getSnapshotFiles } from "../services/history.service.js";
+import * as crdt from "../services/crdt.service.js";
 import {
+  replaceWorkspace,
   cacheWorkspace,
+  getCachedWorkspace,
   markRoomDirty,
   clearRoomDirty,
   incrementEditTokens,
@@ -59,6 +63,32 @@ const broadcastRoomUsers = async (io, roomId) => {
  * @param {import('socket.io').Server} io
  */
 export const registerSocketHandlers = (io) => {
+  /**
+   * CRDT → Redis write-back. Keystrokes arrive as Yjs updates; we fold the
+   * doc's current text into the cached workspace at most every 400 ms per
+   * room, then reuse the existing dirty-flag + token-bucket flush to S3.
+   */
+  const writeBackTimers = new Map();
+  const scheduleWriteBack = (roomId) => {
+    if (writeBackTimers.has(roomId)) return;
+    writeBackTimers.set(roomId, setTimeout(async () => {
+      writeBackTimers.delete(roomId);
+      try {
+        const contents = crdt.getContents(roomId);
+        const cached = (await getCachedWorkspace(roomId)) || (await loadWorkspace(roomId)) || [];
+        const merged = cached.map((f) => (!f.isFolder && contents.has(f.path) ? { ...f, content: contents.get(f.path) } : f));
+        await cacheWorkspace(roomId, merged);
+        await markRoomDirty(roomId);
+        const { shouldFlush } = await incrementEditTokens(roomId);
+        if (shouldFlush && (await persistWorkspaceToS3(roomId))) {
+          io.to(roomId).emit("workspace-saved", { success: true, timestamp: Date.now(), reason: "threshold" });
+        }
+      } catch (err) {
+        console.error(`[CRDT] Write-back failed for room ${roomId}:`, err.message);
+      }
+    }, 400));
+  };
+
   io.on("connection", (socket) => {
     socket.emit("welcome", "Socket Connected Successfully");
 
@@ -69,7 +99,7 @@ export const registerSocketHandlers = (io) => {
         username = "Developer",
         photoURL = "",
         roomName = "",
-        ownerId = "",
+        // ownerId is taken from the verified token, never from the client payload
         template = "react",
         files = null,
         accessType = "private",
@@ -87,7 +117,7 @@ export const registerSocketHandlers = (io) => {
         await getOrCreateRoom({
           roomId,
           roomName,
-          ownerId,
+          ownerId: socket.user.uid,
           ownerName: username,
           template,
           files,
@@ -108,7 +138,6 @@ export const registerSocketHandlers = (io) => {
         roomId,
         username = "Developer",
         photoURL = "",
-        userId = "",
       } = typeof data === "object" && data !== null ? data : { roomId: data };
 
       try {
@@ -125,7 +154,7 @@ export const registerSocketHandlers = (io) => {
           );
         }
 
-        await addParticipant(roomId, userId);
+        await addParticipant(roomId, socket.user.uid);
 
         socket.join(roomId);
         socket.username = username;
@@ -135,7 +164,11 @@ export const registerSocketHandlers = (io) => {
         console.log(`[Socket] ${username} (${socket.id}) joined room ${roomId}`);
 
         const roomFiles = await loadWorkspace(roomId);
-        socket.emit("receive-code", JSON.stringify(roomFiles));
+        crdt.ensureDoc(roomId, roomFiles);
+        // CRDT state first so the editor binds to up-to-date text, then the file tree.
+        socket.emit("yjs-sync", crdt.encodeState(roomId));
+        const { files: liveFiles } = crdt.reconcileFiles(roomId, roomFiles);
+        socket.emit("receive-code", JSON.stringify(liveFiles));
 
         await broadcastRoomUsers(io, roomId);
 
@@ -154,9 +187,24 @@ export const registerSocketHandlers = (io) => {
 
     // ── Real-Time Code Change ──────────────────────────────────────────────
     // Caches workspace state, records 1 edit token, and triggers S3 flush if threshold reached.
+    // Structural changes (create / delete / rename / upload) arrive as the full
+    // file list. Text edits do NOT come through here any more — they are Yjs
+    // updates (see "yjs-update" below).
     socket.on("code-change", async ({ roomId, code }) => {
+      if (!socket.rooms.has(roomId)) return; // only members of a room may write to it
+      let reconciled = code;
       try {
-        await cacheWorkspace(roomId, code);
+        const incoming = typeof code === "string" ? JSON.parse(code) : code;
+        if (Array.isArray(incoming)) {
+          const { files, update } = crdt.reconcileFiles(roomId, incoming);
+          if (update) io.to(roomId).emit("yjs-update", update); // sender needs new texts too
+          reconciled = JSON.stringify(files);
+        }
+      } catch (err) {
+        console.error("[CRDT] reconcile failed:", err.message);
+      }
+      try {
+        await replaceWorkspace(roomId, reconciled);
         await markRoomDirty(roomId);
 
         // Record 1 edit token for this change
@@ -171,7 +219,15 @@ export const registerSocketHandlers = (io) => {
       } catch (err) {
         console.error("[Socket] Redis code-change processing error:", err.message);
       }
-      socket.to(roomId).emit("receive-code", code);
+      socket.to(roomId).emit("receive-code", reconciled);
+    });
+
+    // ── CRDT text updates (Yjs) ────────────────────────────────────────────
+    socket.on("yjs-update", ({ roomId, update }) => {
+      if (!socket.rooms.has(roomId) || !update) return;
+      if (!crdt.applyClientUpdate(roomId, update, socket.id)) return;
+      socket.to(roomId).emit("yjs-update", update);
+      scheduleWriteBack(roomId);
     });
 
     // ── Sync Workspace (no broadcast) ──────────────────────────────────────
@@ -179,7 +235,7 @@ export const registerSocketHandlers = (io) => {
     socket.on("sync-workspace", async ({ code }) => {
       if (!socket.roomId) return;
       try {
-        await cacheWorkspace(socket.roomId, code);
+        await replaceWorkspace(socket.roomId, code);
         await markRoomDirty(socket.roomId);
         const { shouldFlush } = await incrementEditTokens(socket.roomId);
         if (shouldFlush) {
@@ -198,7 +254,7 @@ export const registerSocketHandlers = (io) => {
       if (!socket.roomId) return;
       try {
         console.log(`[Socket] Manual save triggered for room ${socket.roomId}`);
-        const success = await persistWorkspaceToS3(socket.roomId, true);
+        const success = await persistWorkspaceToS3(socket.roomId, true, { userId: socket.user.uid, userName: socket.username || "" });
         io.to(socket.roomId).emit("workspace-saved", { success, timestamp: Date.now(), reason: "manual" });
       } catch (err) {
         console.error("[Socket] Manual save error:", err.message);
@@ -206,14 +262,44 @@ export const registerSocketHandlers = (io) => {
       }
     });
 
+    // ── Restore a saved version ────────────────────────────────────────────
+    // Replaces the live workspace with a snapshot, persists it as a new
+    // version (so a restore is itself undoable) and pushes it to everyone.
+    socket.on("restore-version", async ({ version }, ack) => {
+      const roomId = socket.roomId;
+      const reply = typeof ack === "function" ? ack : () => {};
+      if (!roomId || !socket.rooms.has(roomId)) return reply({ ok: false, error: "Join the room first." });
+      try {
+        const { files } = await getSnapshotFiles(roomId, version);
+        await replaceWorkspace(roomId, files);
+        const update = crdt.replaceContents(roomId, files);
+        if (update) io.to(roomId).emit("yjs-update", update);
+        await markRoomDirty(roomId);
+        await persistWorkspaceToS3(roomId, true, {
+          reason: "restore",
+          restoredFrom: Number(version),
+          userId: socket.user.uid,
+          userName: socket.username || socket.user.name || "",
+        });
+        io.to(roomId).emit("receive-code", JSON.stringify(files));
+        io.to(roomId).emit("version-restored", { version: Number(version), by: socket.username || "A collaborator" });
+        reply({ ok: true });
+      } catch (err) {
+        console.error("[Socket] restore-version error:", err.message);
+        reply({ ok: false, error: err.message });
+      }
+    });
+
     // ── User Presence Update ───────────────────────────────────────────────
     socket.on("update-presence", async ({ roomId, activeFile }) => {
+      if (!socket.rooms.has(roomId)) return; // only members of a room may write to it
       socket.activeFile = activeFile;
       await broadcastRoomUsers(io, roomId);
     });
 
     // ── Collaborative Cursor Positions ─────────────────────────────────────
     socket.on("cursor-change", ({ roomId, position }) => {
+      if (!socket.rooms.has(roomId)) return; // only members of a room may write to it
       socket.cursor = position;
       socket.to(roomId).emit("cursor-update", {
         userId: socket.id,
@@ -223,9 +309,9 @@ export const registerSocketHandlers = (io) => {
     });
 
     // ── Close Room ─────────────────────────────────────────────────────────
-    socket.on("close-room", async ({ roomId, userId }) => {
+    socket.on("close-room", async ({ roomId }) => {
       try {
-        await closeRoom(roomId, userId); // throws AppError if not owner
+        await closeRoom(roomId, socket.user.uid); // throws AppError if not owner
         io.to(roomId).emit("room-closed", {
           roomId,
           message: "This room has been closed by the owner.",
@@ -251,6 +337,7 @@ export const registerSocketHandlers = (io) => {
             }));
 
           io.to(roomId).emit("room-users", usersList);
+          if (usersList.length === 0) crdt.scheduleDrop(roomId);
         } catch (err) {
           console.error("[Socket] Error broadcasting users on disconnect:", err.message);
         }

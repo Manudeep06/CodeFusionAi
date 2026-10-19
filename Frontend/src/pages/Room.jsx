@@ -1,49 +1,40 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import * as Y from "yjs";
+import { MonacoBinding } from "y-monaco";
+import { apiFetch } from "../services/api";
+import { toast } from "../components/ui/toastStore";
 import { useParams, useNavigate } from "react-router-dom";
-import Editor, { loader } from "@monaco-editor/react";
-import * as monaco from "monaco-editor";
-
-loader.config({ monaco });
+import Editor from "@monaco-editor/react";
+import "../lib/monacoSetup";
 
 import { socket } from "../services/socket";
 import { useAuth } from "../context/AuthContext";
-import TerminalComponent from "../components/Room/Terminal";
 import { syncFilesToWebContainer, onServerReady, shouldRunNpmInstall, recordNpmInstall } from "../services/webcontainer";
 import { loadWorkspaceFiles } from "../services/db";
-import RoomAIAssist from "../components/AIAssist/RoomAIAssist";
 
-import { LANGUAGES, getLangByExt, getFileColor, VS, BOILERPLATES } from "../components/Room/constants";
+import { getLangByExt, VS, BOILERPLATES } from "../components/Room/constants";
 import FileIcon from "../components/Room/FileIcon";
 import FolderIcon from "../components/Room/FolderIcon";
-import ActivityIcon from "../components/Room/ActivityIcon";
 import NewItemModal from "../components/Room/NewItemModal";
 import DeleteModal from "../components/Room/DeleteModal";
 import UploadModal from "../components/Room/UploadModal";
-import CopyRoomId from "../components/Room/CopyRoomId";
+import TitleBar from "../components/Room/TitleBar";
+import StatusBar from "../components/Room/StatusBar";
+import SearchPanel from "../components/Room/SearchPanel";
+import CollaboratorsPanel from "../components/Room/CollaboratorsPanel";
+import PreviewPanel from "../components/Room/PreviewPanel";
+import { defineMonacoTheme, MONACO_THEME } from "../components/Room/monacoTheme";
+import ActivityBar from "../components/Room/ActivityBar";
+import AIPanel from "../components/Room/AIPanel";
+import HistoryPanel from "../components/Room/HistoryPanel";
+import BottomPanel from "../components/Room/BottomPanel";
+import CompareView from "../components/Room/CompareView";
+import { confirmDialog } from "../components/ui/confirmStore";
+import { FilePlus2, FolderPlus, Upload, Download, ChevronRight, Play, Loader2, PanelRight, X } from "lucide-react";
+import "../styles/room.css";
 
-function CollaboratorAvatar({ photoURL, username }) {
-  const [imgError, setImgError] = useState(false);
-
-  if (photoURL && !imgError) {
-    return (
-      <img
-        src={photoURL}
-        alt={username || "User"}
-        className="w-7 h-7 rounded-full object-cover shrink-0"
-        onError={() => setImgError(true)}
-      />
-    );
-  }
-
-  return (
-    <div
-      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 text-white"
-      style={{ background: "var(--vs-accent)" }}
-    >
-      {(username || "U")[0].toUpperCase()}
-    </div>
-  );
-}
+const PANEL_TITLES = { explorer: "Explorer", search: "Search", users: "Collaborators", history: "Version history" };
+const AI_WIDTH = "clamp(20rem, 30vw, 27rem)";
 
 export default function Room() {
   const { roomId }  = useParams();
@@ -56,6 +47,11 @@ export default function Room() {
   const [files,           setFiles]           = useState([]);
   const [code,            setCode]            = useState("");
   const [activeFile,      setActiveFile]      = useState(null);
+  const [editorReady,     setEditorReady]     = useState(false);
+  // One CRDT document per room: Map<path, Y.Text>. The server holds the authoritative copy.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a fresh document per room
+  const ydoc = useMemo(() => new Y.Doc(), [roomId]);
+  const bindingRef = useRef(null);
   const [openTabs,        setOpenTabs]        = useState([]);
   const [expandedFolders, setExpandedFolders] = useState({});
   const [language,        setLanguage]        = useState("javascript");
@@ -63,7 +59,17 @@ export default function Room() {
   const [selectedCode,    setSelectedCode]    = useState("");
   const roomTheme = "light";
   const [isRunning,       setIsRunning]       = useState(false);
-  const [activePanel,     setActivePanel]     = useState("explorer"); // explorer | search | users | ai
+  const [activePanel,     setActivePanel]     = useState("explorer"); // explorer | search | users | history
+  const [aiOpen,          setAiOpen]          = useState(() => window.matchMedia("(min-width: 1100px)").matches);
+  const [connection,      setConnection]      = useState(socket.connected ? "connected" : "connecting");
+  const [cursor,          setCursor]          = useState(null);
+  const [problems,        setProblems]        = useState([]);
+  const [output,          setOutput]          = useState([]);
+  const [bottomCollapsed, setBottomCollapsed] = useState(false);
+  const [historyKey,      setHistoryKey]      = useState(0);
+  const [compare,         setCompare]         = useState(null);   // { version, createdAt, files }
+  const [restoring,       setRestoring]       = useState(null);   // version number being restored
+  const [roomMeta,        setRoomMeta]        = useState(null);   // { name, accessType }
   const [searchQuery,     setSearchQuery]     = useState("");
   const [contextMenu,     setContextMenu]     = useState(null); // { x, y, node }
 
@@ -218,6 +224,28 @@ export default function Room() {
     });
   }, [roomId]);
 
+  /* ── Room name + privacy (from the user's room list) ── */
+  useEffect(() => {
+    if (!user?.uid) return;
+    let cancelled = false;
+    apiFetch(`/api/rooms/user/${user.uid}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rooms) => { if (!cancelled) setRoomMeta(rooms.find((r) => r.roomId === roomId) || null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [roomId, user?.uid]);
+
+  /* ── Real-time connection status ── */
+  useEffect(() => {
+    const up = () => setConnection("connected");
+    const down = () => setConnection("disconnected");
+    const retry = () => setConnection("connecting");
+    socket.on("connect", up);
+    socket.on("disconnect", down);
+    socket.io.on("reconnect_attempt", retry);
+    return () => { socket.off("connect", up); socket.off("disconnect", down); socket.io.off("reconnect_attempt", retry); };
+  }, []);
+
   /* ── Sync language whenever active file changes ── */
   useEffect(() => {
     if (socket && socket.connected) {
@@ -237,7 +265,7 @@ export default function Room() {
       try {
         const baseUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
         if (user?.uid) {
-          const res = await fetch(`${baseUrl}/api/users/profile/${user.uid}`);
+          const res = await apiFetch(`${baseUrl}/api/users/profile/${user.uid}`);
           if (res.ok) {
             const data = await res.json();
             if (data.photoURL) currentPhoto = data.photoURL;
@@ -270,18 +298,19 @@ export default function Room() {
       if (success) {
         setSaveStatus("saved");
         setLastSavedTime(timestamp || Date.now());
+        setHistoryKey((k) => k + 1);
       } else {
         setSaveStatus("unsaved");
       }
     });
 
     socket.on("join-error", (errorMessage) => {
-      alert(errorMessage || "Failed to join room.");
+      toast.error(errorMessage || "Failed to join room.");
       navigate("/dashboard");
     });
 
     socket.on("room-closed", (data) => {
-      alert(data.message || "This room has been closed by the owner.");
+      toast.info(data.message || "This room has been closed by the owner.");
       navigate("/dashboard");
     });
 
@@ -329,6 +358,13 @@ export default function Room() {
         return changed ? next : prev;
       });
     });
+
+    const applyRemote = (update) => {
+      if (update) Y.applyUpdate(ydoc, new Uint8Array(update), "remote");
+    };
+    socket.on("yjs-sync", applyRemote);
+    socket.on("yjs-update", applyRemote);
+    socket.on("version-restored", ({ version, by }) => { toast.info(`${by} restored version ${version}.`); setHistoryKey((k) => k + 1); });
 
     socket.on("room-users", (userList) => {
       setUsers(userList);
@@ -453,8 +489,62 @@ export default function Room() {
       socket.off("receive-code");
       socket.off("room-users");
       socket.off("cursor-update");
+      socket.off("yjs-sync", applyRemote);
+      socket.off("yjs-update", applyRemote);
+      socket.off("version-restored");
     };
-  }, [roomId, username, photoURL, user?.uid, navigate]);
+  }, [roomId, username, photoURL, user?.uid, navigate, ydoc]);
+
+  /* ── CRDT: send local edits, mirror text into `files` state ── */
+  useEffect(() => {
+    const onLocalUpdate = (update, origin) => {
+      if (origin === "remote") return;
+      setSaveStatus("unsaved");
+      socket.emit("yjs-update", { roomId, update });
+    };
+    const map = ydoc.getMap("files");
+    // Any text change (local or remote) is reflected in the file list used by
+    // the explorer, search, AI context and the WebContainer sync.
+    const onDeep = (events) => {
+      const changed = new Set();
+      for (const e of events) {
+        if (e.target === map) e.changes.keys.forEach((_, key) => changed.add(key));
+        else if (e.path.length) changed.add(String(e.path[0]));
+      }
+      if (!changed.size) return;
+      setFiles((prev) => prev.map((f) => (changed.has(f.path) && map.has(f.path) ? { ...f, content: map.get(f.path).toString() } : f)));
+    };
+    ydoc.on("update", onLocalUpdate);
+    map.observeDeep(onDeep);
+    return () => {
+      ydoc.off("update", onLocalUpdate);
+      map.unobserveDeep(onDeep);
+    };
+  }, [ydoc, roomId]);
+
+  /* ── CRDT: bind Monaco to the active file's Y.Text ── */
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editorReady || !editor || !activeFile) return;
+    const map = ydoc.getMap("files");
+    let binding = null;
+    const bind = () => {
+      const text = map.get(activeFile);
+      const model = editor.getModel();
+      if (!text || !model || binding) return;
+      binding = new MonacoBinding(text, model, new Set([editor]));
+      bindingRef.current = binding;
+    };
+    bind();
+    // A brand-new file gets its Y.Text from the server a moment later.
+    const onKeys = () => bind();
+    if (!binding) map.observe(onKeys);
+    return () => {
+      map.unobserve(onKeys);
+      binding?.destroy();
+      if (bindingRef.current === binding) bindingRef.current = null;
+    };
+  }, [activeFile, editorReady, ydoc]);
 
   /* ── Sync Files to WebContainer (Debounced) ── */
   useEffect(() => {
@@ -518,6 +608,8 @@ export default function Room() {
 
   const handleCodeChange = (value) => {
     setCode(value);
+    // With a CRDT binding the edit is already on its way as a Yjs update.
+    if (bindingRef.current) return;
     setFiles((prev) => prev.map((f) => (f.path === activeFile ? { ...f, content: value } : f)));
     emitFiles(files.map((f) => (f.path === activeFile ? { ...f, content: value } : f)));
   };
@@ -531,9 +623,10 @@ export default function Room() {
       return;
     }
     const model = editor.getModel();
-    const range = model
-      ? model.getFullModelRange()
-      : new monacoInstance.Range(1, 1, 1, 1);
+    const selection = editor.getSelection();
+    const range = selection && !selection.isEmpty()
+      ? selection
+      : model ? model.getFullModelRange() : new monacoInstance.Range(1, 1, 1, 1);
     const id = { major: 1, minor: 1 };
     const textOp = {
       identifier: id,
@@ -543,69 +636,35 @@ export default function Room() {
     };
     editor.executeEdits("ai-assist", [textOp]);
     editor.focus();
+    toast.success(selection && !selection.isEmpty() ? "Selection replaced. Undo with Ctrl Z." : `Applied to ${activeFile.split("/").pop()}. Undo with Ctrl Z.`);
   };
+
+  /** Reads the active file and selection straight from the editor, so the AI always sees what's on screen. */
+  const getEditorContext = useCallback(() => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!model) return { code, selection: selectedCode };
+    const sel = editor.getSelection();
+    return { code: model.getValue(), selection: sel && !sel.isEmpty() ? model.getValueInRange(sel) : "" };
+  }, [code, selectedCode]);
 
   const handleEditorMount = (editor, monaco) => {
     editorRef.current = editor;
     window.monaco = monaco;
+    setEditorReady(true);
 
-    // Helper to format code
-    const formatCode = (model) => {
-      try {
-        const text = model.getValue();
-        const langId = model.getLanguageId();
-        if (langId === "json") {
-          const parsed = JSON.parse(text);
-          return [{ range: model.getFullModelRange(), text: JSON.stringify(parsed, null, 2) }];
-        }
-        let indent = 0;
-        const lines = text.split("\n");
-        const formatted = lines.map((line) => {
-          const trimmed = line.trim();
-          if (!trimmed) return "";
-          if (trimmed.startsWith("}") || trimmed.startsWith("]") || trimmed.startsWith(")") || trimmed.startsWith("</")) {
-            indent = Math.max(0, indent - 1);
-          }
-          const result = "  ".repeat(indent) + trimmed;
-          if (
-            (trimmed.endsWith("{") || trimmed.endsWith("[") || trimmed.endsWith("(") || (trimmed.startsWith("<") && !trimmed.startsWith("</") && !trimmed.endsWith("/>") && !trimmed.includes("</"))) &&
-            !trimmed.startsWith("//") && !trimmed.startsWith("/*")
-          ) {
-            indent++;
-          }
-          return result;
-        }).join("\n");
-        return [{ range: model.getFullModelRange(), text: formatted }];
-      } catch {
-        return [];
-      }
-    };
-
-    // Register Document & Range Formatting Providers for Monaco
-    const supportedLangs = ["javascript", "typescript", "json", "html", "css", "cpp", "java", "python"];
-    supportedLangs.forEach((lang) => {
-      monaco.languages.registerDocumentFormattingEditProvider(lang, {
-        provideDocumentFormattingEdits(model) {
-          return formatCode(model);
-        }
-      });
-      monaco.languages.registerDocumentRangeFormattingEditProvider(lang, {
-        provideDocumentRangeFormattingEdits(model, range) {
-          const text = model.getValueInRange(range);
-          let indent = 0;
-          const formatted = text.split("\n").map((line) => {
-            const trimmed = line.trim();
-            if (trimmed.startsWith("}") || trimmed.startsWith("]")) indent = Math.max(0, indent - 1);
-            const res = "  ".repeat(indent) + trimmed;
-            if (trimmed.endsWith("{") || trimmed.endsWith("[")) indent++;
-            return res;
-          }).join("\n");
-          return [{ range, text: formatted }];
-        }
-      });
-    });
+    // Problems tab: Monaco diagnostics across open models.
+    const readMarkers = () => setProblems(
+      monaco.editor.getModelMarkers({})
+        .filter((m) => m.resource.scheme !== "inmemory" || m.resource.path)
+        .map((m) => ({ file: decodeURIComponent(m.resource.path.replace(/^\//, "")), line: m.startLineNumber, column: m.startColumn, message: m.message, severity: m.severity }))
+        .slice(0, 200)
+    );
+    monaco.editor.onDidChangeMarkers(readMarkers);
+    readMarkers();
 
     editor.onDidChangeCursorPosition((e) => {
+      setCursor({ lineNumber: e.position.lineNumber, column: e.position.column });
       if (socket && socket.connected) {
         socket.emit("cursor-change", { roomId, position: e.position });
       }
@@ -637,7 +696,7 @@ export default function Room() {
     if (isFolder) {
       try {
         const baseUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
-        await fetch(`${baseUrl}/api/filesystem/folder`, {
+        await apiFetch(`${baseUrl}/api/filesystem/folder`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -752,6 +811,7 @@ export default function Room() {
       }
       
       window.dispatchEvent(new CustomEvent('run-code-command', { detail: { cmd } }));
+      setOutput((o) => [...o.slice(-99), { at: Date.now(), text: cmd.trim() }]);
     } catch (err) {
       console.error("Run code error", err);
     } finally {
@@ -774,6 +834,33 @@ export default function Room() {
     const url  = URL.createObjectURL(blob);
     Object.assign(document.createElement("a"), { href: url, download: `workspace-${roomId}.zip` }).click();
     URL.revokeObjectURL(url);
+  };
+
+  /* ── Version history ── */
+  const restoreVersion = async (version) => {
+    const ok = await confirmDialog({
+      title: `Restore version ${version}?`,
+      body: "The workspace will be replaced for everyone in this room. The current state is kept as a version, so you can undo this.",
+      confirmLabel: "Restore",
+    });
+    if (!ok) return;
+    setRestoring(version);
+    socket.timeout(20000).emit("restore-version", { version }, (err, res) => {
+      setRestoring(null);
+      if (err || !res?.ok) { toast.error(res?.error || "Restore failed. Try again."); return; }
+      setCompare(null);
+      toast.success(`Restored version ${version}.`);
+    });
+  };
+
+  const openProblem = (p) => {
+    const f = files.find((item) => item.path === p.file);
+    if (f) openFile(f.path, f.content);
+    setTimeout(() => {
+      editorRef.current?.revealLineInCenter(p.line);
+      editorRef.current?.setPosition({ lineNumber: p.line, column: p.column });
+      editorRef.current?.focus();
+    }, 50);
   };
 
   /* ── Tree builder ── */
@@ -919,878 +1006,184 @@ export default function Room() {
       {deleteModal   && <DeleteModal   {...deleteModal}   onConfirm={confirmDelete}     onCancel={() => setDeleteModal(null)} />}
       {uploadPending && <UploadModal   fileCount={uploadPending.length}                 onConfirm={confirmUpload}            onCancel={() => setUploadPending(null)} />}
 
-      <style>{`
-        @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(16px) scale(0.97) } to { opacity: 1; transform: translateY(0) scale(1) } }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #484f58; }
-        .remote-cursor-purple { border-left: 2px solid #a855f7 !important; position: absolute; z-index: 10; margin-left: -1px; }
-        .remote-cursor-cyan { border-left: 2px solid #06b6d4 !important; position: absolute; z-index: 10; margin-left: -1px; }
-        .remote-cursor-emerald { border-left: 2px solid #10b981 !important; position: absolute; z-index: 10; margin-left: -1px; }
-        .remote-cursor-amber { border-left: 2px solid #fbbf24 !important; position: absolute; z-index: 10; margin-left: -1px; }
-        .remote-cursor-pink { border-left: 2px solid #ec4899 !important; position: absolute; z-index: 10; margin-left: -1px; }
-        .remote-cursor-blue { border-left: 2px solid #3b82f6 !important; position: absolute; z-index: 10; margin-left: -1px; }
+      <div className={`room-app theme-${roomTheme}`}>
 
-        .theme-dark {
-          --vs-bg: #0d1117;
-          --vs-sidebarBg: #161b22;
-          --vs-activityBg: #0d1117;
-          --vs-tabBarBg: #161b22;
-          --vs-tabActive: #0d1117;
-          --vs-tabInactive: #161b22;
-          --vs-tabBorder: #30363d;
-          --vs-statusBg: #1f2937;
-          --vs-input: #21262d;
-          --vs-border: #30363d;
-          --vs-highlight: #1d4ed840;
-          --vs-hover: #1c2128;
-          --vs-text: #e6edf3;
-          --vs-textMuted: #7d8590;
-          --vs-textDim: #484f58;
-          --vs-accent: #58a6ff;
-          --vs-accentPurple: #a371f7;
-          --vs-green: #3fb950;
-          --vs-teal: #39d353;
-          --vs-yellow: #e3b341;
-          --vs-red: #f85149;
-          --vs-orange: #f0883e;
-          --vs-gradientA: #58a6ff;
-          --vs-gradientB: #a371f7;
-        }
+        <TitleBar
+          roomName={roomMeta?.name || files.find((f) => f.isFolder && !f.path.includes("/"))?.path}
+          roomId={roomId}
+          access={roomMeta?.accessType}
+          users={users}
+          connection={connection}
+          saveStatus={saveStatus}
+          lastSavedTime={lastSavedTime}
+          onSave={forceFlushToS3}
+          aiOpen={aiOpen}
+          onToggleAI={() => setAiOpen((v) => !v)}
+        />
 
-        .theme-light {
-          --vs-bg: #faf9f6;
-          --vs-sidebarBg: #f4f3ee;
-          --vs-activityBg: #faf9f6;
-          --vs-tabBarBg: #f4f3ee;
-          --vs-tabActive: #faf9f6;
-          --vs-tabInactive: #f4f3ee;
-          --vs-tabBorder: rgba(0, 0, 0, 0.08);
-          --vs-statusBg: #e2e8f0;
-          --vs-input: #ffffff;
-          --vs-border: rgba(0, 0, 0, 0.08);
-          --vs-highlight: rgba(99, 102, 241, 0.15);
-          --vs-hover: rgba(0, 0, 0, 0.03);
-          --vs-text: #0f172a;
-          --vs-textMuted: #475569;
-          --vs-textDim: #94a3b8;
-          --vs-accent: #4f46e5;
-          --vs-accentPurple: #818cf8;
-          --vs-green: #10b981;
-          --vs-teal: #0d9488;
-          --vs-yellow: #f59e0b;
-          --vs-red: #ef4444;
-          --vs-orange: #f97316;
-          --vs-gradientA: #6366f1;
-          --vs-gradientB: #818cf8;
-        }
+        <div className="room-body">
+          <ActivityBar active={activePanel} onSelect={setActivePanel} userCount={users.length} onLeave={() => navigate("/dashboard")} />
 
-        /* Monaco overrides for light theme */
-        .theme-light .monaco-editor, 
-        .theme-light .monaco-editor .margin {
-          background-color: #faf9f6 !important;
-        }
-      `}</style>
-      <div
-        className={`h-screen flex flex-col overflow-hidden theme-${roomTheme}`}
-        style={{ background: VS.bg, color: VS.text, fontFamily: "'Segoe UI', system-ui, sans-serif", fontSize: "13px" }}
-      >
-
-        {/* ══ TITLE BAR ══ */}
-        <div
-          className="h-9 flex items-center justify-between px-3 select-none shrink-0"
-          style={{
-            background: VS.sidebarBg,
-            borderBottom: `1px solid ${VS.border}`,
-          }}
-        >
-          {/* Left – Brand */}
-          <div className="flex items-center gap-2">
-            <div
-              className="w-5 h-5 rounded flex items-center justify-center shrink-0 text-white shadow-xs"
-              style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)", border: "1px solid rgba(255,255,255,0.1)" }}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m8 9 3 3-3 3m5 0h3M5 20h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
-              </svg>
-            </div>
-            <span className="text-[12px] font-bold tracking-tight" style={{ color: "var(--vs-text)" }}>
-              CodeFusionAI
-            </span>
-            <span
-              className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded text-indigo-600 dark:text-indigo-400"
-              style={{ background: "var(--vs-highlight)", border: "1px solid var(--vs-border)" }}
-            >
-              IDE
-            </span>
-          </div>
-
-          {/* Centre – active file breadcrumb */}
-          <div className="flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-md" style={{ background: "var(--vs-hover)", border: `1px solid ${VS.border}`, color: VS.textMuted }}>
-            {activeFile ? (
-              <>
-                <FileIcon filename={activeFile.split("/").pop()} size={13} />
-                <span className="font-medium" style={{ color: VS.textMuted }}>{activeFile.split("/").slice(0, -1).join(" / ")}</span>
-                {activeFile.includes("/") && <span style={{ color: VS.textDim }}> / </span>}
-                <span className="font-semibold" style={{ color: VS.text }}>{activeFile.split("/").pop()}</span>
-              </>
-            ) : (
-              <span style={{ color: VS.textDim }} className="italic">No file open</span>
-            )}
-          </div>
-
-          {/* Right – S3 Storage Status & Save Button */}
-          <div className="flex items-center gap-2">
-            {/* Status Badge */}
-            <div
-              className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-all duration-150 select-none cursor-default"
-              style={{
-                background: saveStatus === "saved" ? "rgba(16, 185, 129, 0.1)" : saveStatus === "saving" ? "rgba(99, 102, 241, 0.1)" : "rgba(245, 158, 11, 0.1)",
-                border: `1px solid ${saveStatus === "saved" ? "rgba(16, 185, 129, 0.25)" : saveStatus === "saving" ? "rgba(99, 102, 241, 0.25)" : "rgba(245, 158, 11, 0.25)"}`,
-                color: saveStatus === "saved" ? "#059669" : saveStatus === "saving" ? "#4f46e5" : "#d97706",
-              }}
-              title={
-                saveStatus === "saved"
-                  ? `All workspace edits synced to AWS S3${lastSavedTime ? ` (Last saved at ${new Date(lastSavedTime).toLocaleTimeString()})` : ""}`
-                  : saveStatus === "saving"
-                  ? "Flushing workspace edits to AWS S3..."
-                  : "Unsaved edits buffered in Redis"
-              }
-            >
-              {saveStatus === "saving" ? (
-                <svg className="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              ) : (
-                <span
-                  className="w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{
-                    background: saveStatus === "saved" ? "#10b981" : "#f59e0b",
-                    boxShadow: saveStatus === "saved" ? "0 0 5px #10b981" : "0 0 5px #f59e0b"
-                  }}
-                />
-              )}
-              <span className="font-semibold">
-                {saveStatus === "saved"
-                  ? "Saved to S3"
-                  : saveStatus === "saving"
-                  ? "Saving..."
-                  : "Unsaved"}
-              </span>
-            </div>
-
-            {/* Save Button */}
-            <button
-              onClick={forceFlushToS3}
-              disabled={saveStatus === "saving"}
-              title="Save changes and flush Redis cache to AWS S3 immediately"
-              className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-semibold text-white transition-all duration-150 shadow-xs active:scale-[0.97] disabled:opacity-50 cursor-pointer"
-              style={{
-                background: "linear-gradient(135deg, #4f46e5, #6366f1)",
-                boxShadow: "0 1px 3px rgba(79, 70, 229, 0.25)",
-              }}
-            >
-              {saveStatus === "saving" ? (
-                <svg className="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-              ) : (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                  <polyline points="17 21 17 13 7 13 7 21" />
-                  <polyline points="7 3 7 8 15 8" />
-                </svg>
-              )}
-              <span>{saveStatus === "saving" ? "Saving..." : "Save"}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* ══ MAIN BODY ══ */}
-        <div className="flex flex-1 overflow-hidden">
-
-          {/* ━━ ACTIVITY BAR ━━ */}
-          <div
-            className="w-12 shrink-0 flex flex-col items-center pt-1"
-            style={{ background: VS.activityBg, borderRight: `1px solid ${VS.border}` }}
-          >
-            {/* Explorer */}
-            <ActivityIcon
-              title="Explorer"
-              active={activePanel === "explorer"}
-              onClick={() => setActivePanel(activePanel === "explorer" ? null : "explorer")}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                <rect x="4" y="2" width="11" height="14" rx="1" stroke="currentColor" strokeWidth="1.4" />
-                <path d="M9 2v14" stroke="currentColor" strokeWidth="1.4" />
-                <rect x="6" y="8" width="13" height="14" rx="1" stroke="currentColor" strokeWidth="1.4" fill="var(--vs-activityBg)" />
-              </svg>
-            </ActivityIcon>
-
-            {/* Search */}
-            <ActivityIcon
-              title="Search"
-              active={activePanel === "search"}
-              onClick={() => setActivePanel(activePanel === "search" ? null : "search")}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M16.5 16.5L21 21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </ActivityIcon>
-
-            {/* Users */}
-            <ActivityIcon
-              title="Collaborators"
-              active={activePanel === "users"}
-              onClick={() => setActivePanel(activePanel === "users" ? null : "users")}
-            >
-              <div className="relative">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="M2 21v-1a7 7 0 0 1 14 0v1" stroke="currentColor" strokeWidth="1.5" />
-                  <circle cx="19" cy="8" r="3" stroke="currentColor" strokeWidth="1.4" />
-                  <path d="M22 21v-.5a5 5 0 0 0-5-5" stroke="currentColor" strokeWidth="1.4" />
-                </svg>
-                {users.length > 0 && (
-                  <span
-                    className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full text-[8px] flex items-center justify-center font-bold"
-                    style={{ background: VS.accent, color: "#fff" }}
-                  >
-                    {users.length}
-                  </span>
-                )}
-              </div>
-            </ActivityIcon>
-
-            {/* AI Assistant */}
-            <ActivityIcon
-              title="AI Assistant"
-              active={activePanel === "ai"}
-              accentColor="#a371f7"
-              onClick={() => setActivePanel(activePanel === "ai" ? null : "ai")}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3a1 1 0 0 0-1 1v4.5A1.5 1.5 0 0 1 9.5 10H5a1 1 0 0 0 0 2h4.5a1.5 1.5 0 0 1 1.5 1.5V18a1 1 0 0 0 2 0v-4.5a1.5 1.5 0 0 1 1.5-1.5H20a1 1 0 0 0 0-2h-4.5A1.5 1.5 0 0 1 14 8.5V4a1 1 0 0 0-1-1z" fill="currentColor" fillOpacity="0.1" />
-                <path d="M18 16a0.5 0.5 0 0 0-.5.5V18a0.5 0.5 0 0 1-.5.5h-1.5a0.5 0.5 0 0 0 0 1H17a0.5 0.5 0 0 1 .5.5v1.5a0.5 0.5 0 0 0 1 0V21a0.5 0.5 0 0 1 .5-.5h1.5a0.5 0.5 0 0 0 0-1H20a0.5 0.5 0 0 1-.5-.5v-1.5a0.5 0.5 0 0 0-.5-.5z" fill="currentColor" fillOpacity="0.25" />
-              </svg>
-            </ActivityIcon>
-
-            {/* Spacer */}
-            <div className="flex-1" />
-
-
-
-            {/* Leave Room */}
-            <button
-              title="Leave Room"
-              onClick={() => navigate("/dashboard")}
-              className="w-12 h-12 flex items-center justify-center relative transition-all duration-150 group"
-              style={{ color: "#484f58", borderLeft: "2px solid transparent" }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "#f85149"; e.currentTarget.style.background = "#f8514912"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "#484f58"; e.currentTarget.style.background = "transparent"; }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                <path d="M16 17l5-5-5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M21 12H9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-          {/* ━━ SIDEBAR PANEL ━━ */}
           {activePanel && (
             <>
-              <div
-                className="shrink-0 flex flex-col overflow-hidden"
-                style={{ width: `${sidebarWidth}px`, background: VS.sidebarBg, borderRight: `1px solid ${VS.border}` }}
-              >
-              {/* Panel title header */}
-              <div
-                className="h-9 flex items-center justify-between px-3 shrink-0 select-none"
-                style={{ borderBottom: `1px solid ${VS.border}`, background: VS.input }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold tracking-wider uppercase" style={{ color: VS.text }}>
-                    {activePanel === "explorer" ? "Explorer" : activePanel === "search" ? "Search Workspace" : activePanel === "users" ? "Collaborators" : "AI Assistant"}
-                  </span>
+              <aside className="room-side" style={{ width: sidebarWidth }} aria-label={PANEL_TITLES[activePanel]}>
+                <div className="room-side-head">
+                  <span>{PANEL_TITLES[activePanel]}</span>
+                  {activePanel === "explorer" && (
+                    <div className="room-side-actions">
+                      <button type="button" title="New file" aria-label="New file" onClick={() => setNewItemModal({ parentPath: "", isFolder: false })}><FilePlus2 size={15} /></button>
+                      <button type="button" title="New folder" aria-label="New folder" onClick={() => setNewItemModal({ parentPath: "", isFolder: true })}><FolderPlus size={15} /></button>
+                      <input type="file" ref={fileInputRef} webkitdirectory="true" directory="true" multiple onChange={handleFolderUpload} className="hidden" />
+                      <button type="button" title="Upload folder" aria-label="Upload folder" onClick={() => fileInputRef.current?.click()}><Upload size={15} /></button>
+                      <button type="button" title="Download as ZIP" aria-label="Download as ZIP" onClick={downloadZip}><Download size={15} /></button>
+                    </div>
+                  )}
+                  <button type="button" className="room-icon-btn room-side-close" onClick={() => setActivePanel(null)} aria-label="Close panel"><X size={15} /></button>
                 </div>
+
                 {activePanel === "explorer" && (
-                  <div className="flex items-center gap-1">
-                    {/* New file */}
-                    <button
-                      title="New File"
-                      onClick={() => setNewItemModal({ parentPath: "", isFolder: false })}
-                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
-                      style={{ color: VS.textMuted }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M9 2H4v12h8V6.5L9 2zm0 0v4.5h3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /><path d="M8 9v4M6 11h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
-                    </button>
-                    {/* New folder */}
-                    <button
-                      title="New Folder"
-                      onClick={() => setNewItemModal({ parentPath: "", isFolder: true })}
-                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
-                      style={{ color: VS.textMuted }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M1 4h5l1 2h8v7H1V4z" stroke="#d97706" strokeWidth="1.3" fill="none" /><path d="M8 8v4M6 10h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
-                    </button>
-                    {/* Upload */}
-                    <input type="file" ref={fileInputRef} webkitdirectory="true" directory="true" multiple onChange={handleFolderUpload} className="hidden" />
-                    <button
-                      title="Upload Folder"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
-                      style={{ color: VS.textMuted }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 11V2M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /><path d="M2 11v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
-                    </button>
-                    {/* Download ZIP */}
-                    <button
-                      title="Download as ZIP"
-                      onClick={downloadZip}
-                      className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
-                      style={{ color: VS.textMuted }}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 2v9M5 8l3 3 3-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /><path d="M2 11v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
-                    </button>
+                  <div className="room-tree">
+                    {files.length === 0 ? (
+                      <div className="room-empty">
+                        <FilePlus2 size={20} />
+                        <p>This workspace is empty. Create a file or upload a folder to get started.</p>
+                        <button type="button" className="room-btn is-primary" onClick={() => setNewItemModal({ parentPath: "", isFolder: false })}>New file</button>
+                      </div>
+                    ) : renderTree(treeNodes)}
                   </div>
                 )}
-              </div>
 
-              {/* ── EXPLORER ── */}
-              {activePanel === "explorer" && (
-                <div className="flex-1 overflow-y-auto select-none">
-                  {/* Workspace Accordion Header */}
-                  <div
-                    className="flex items-center justify-between px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider cursor-pointer transition-colors"
-                    style={{ background: VS.bg, borderBottom: `1px solid ${VS.border}`, color: VS.text }}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <svg width="9" height="9" viewBox="0 0 10 10" className="transform rotate-90 shrink-0" style={{ fill: VS.textMuted }}>
-                        <path d="M2 1l6 4-6 4V1z" />
-                      </svg>
-                      <span>Workspace</span>
-                    </div>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-normal" style={{ background: VS.input, color: VS.textMuted }}>
-                      {files.filter(f => !f.isFolder).length}
-                    </span>
-                  </div>
+                {activePanel === "search" && (
+                  <SearchPanel
+                    files={files}
+                    query={searchQuery}
+                    onQueryChange={setSearchQuery}
+                    onOpen={(path) => { const f = files.find((item) => item.path === path); if (f) openFile(f.path, f.content); }}
+                  />
+                )}
 
-                  <div className="py-1">
-                    {files.length === 0 ? (
-                      <div className="px-4 py-8 text-center flex flex-col items-center">
-                        <div className="w-12 h-12 mb-3 rounded-xl flex items-center justify-center text-xl" style={{ background: VS.input }}>
-                          📂
-                        </div>
-                        <p className="text-xs font-medium mb-3" style={{ color: VS.textMuted }}>No files in workspace yet.</p>
-                        <button
-                          onClick={() => setNewItemModal({ parentPath: "", isFolder: false })}
-                          className="px-3 py-1.5 rounded text-[11px] font-semibold text-white transition-opacity"
-                          style={{ background: "linear-gradient(135deg, #4f46e5, #6366f1)" }}
-                        >
-                          + Add File
-                        </button>
-                      </div>
-                    ) : (
-                      renderTree(treeNodes)
-                    )}
-                  </div>
-                </div>
-              )}
+                {activePanel === "users" && <CollaboratorsPanel users={users} />}
 
-              {/* ── SEARCH PANEL ── */}
-              {activePanel === "search" && (
-                <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-3 select-none">
-                  {/* Search Input Box */}
-                  <div className="relative flex items-center">
-                    <svg className="w-3.5 h-3.5 absolute left-2.5 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <circle cx="11" cy="11" r="8" strokeWidth="2" />
-                      <line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2" />
-                    </svg>
-                    <input
-                      type="text"
-                      placeholder="Search files or code..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-8 pr-7 py-1.5 rounded-md text-[12px] outline-none transition-all"
-                      style={{
-                        background: VS.bg,
-                        border: `1px solid ${VS.border}`,
-                        color: VS.text,
-                      }}
-                      autoFocus
-                    />
-                    {searchQuery && (
-                      <button
-                        onClick={() => setSearchQuery("")}
-                        className="absolute right-2 text-xs text-slate-400 hover:text-slate-600"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Search Results */}
-                  <div className="flex flex-col gap-1 overflow-y-auto">
-                    {searchQuery.trim() === "" ? (
-                      <p className="text-[11px] text-center text-slate-400 py-6">Type to search files or code content across workspace.</p>
-                    ) : (
-                      (() => {
-                        const results = files.filter(f => !f.isFolder).flatMap((file) => {
-                          const matches = [];
-                          const filenameMatches = file.path.toLowerCase().includes(searchQuery.toLowerCase());
-                          const lines = (file.content || "").split("\n");
-                          lines.forEach((lineText, idx) => {
-                            if (lineText.toLowerCase().includes(searchQuery.toLowerCase())) {
-                              matches.push({ path: file.path, line: idx + 1, lineText: lineText.trim() });
-                            }
-                          });
-                          if (filenameMatches && matches.length === 0) {
-                            matches.push({ path: file.path, line: 1, lineText: "Filename match" });
-                          }
-                          return matches;
-                        });
-
-                        if (results.length === 0) {
-                          return <p className="text-[11px] text-center text-slate-400 py-6">No matching results found.</p>;
-                        }
-
-                        return results.map((res, idx) => (
-                          <div
-                            key={idx}
-                            onClick={() => {
-                              const f = files.find(item => item.path === res.path);
-                              if (f) openFile(f.path, f.content);
-                            }}
-                            className="p-2 rounded-md hover:bg-slate-200/50 cursor-pointer border border-transparent hover:border-slate-300/50 transition-all flex flex-col gap-0.5"
-                            style={{ background: VS.bg }}
-                          >
-                            <div className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: VS.accent }}>
-                              <FileIcon filename={res.path.split("/").pop()} size={13} />
-                              <span className="truncate">{res.path}</span>
-                              <span className="ml-auto text-[10px] text-slate-400">L{res.line}</span>
-                            </div>
-                            <p className="text-[11px] font-mono truncate text-slate-600 pl-4">
-                              {res.lineText}
-                            </p>
-                          </div>
-                        ));
-                      })()
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* ── COLLABORATORS ── */}
-              {activePanel === "users" && (
-                <div className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2 select-none">
-                  <div className="flex items-center justify-between px-1 mb-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: VS.textMuted }}>Active Team ({users.length})</span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-xs" />
-                  </div>
-                  {users.length === 0 ? (
-                    <div className="px-3 py-8 text-center flex flex-col items-center">
-                      <div className="w-10 h-10 mb-2 rounded-full flex items-center justify-center text-lg" style={{ background: VS.input }}>
-                        👥
-                      </div>
-                      <p className="text-xs italic" style={{ color: VS.textMuted }}>No other collaborators online.</p>
-                    </div>
-                  ) : (
-                    users.map((u, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all"
-                        style={{ background: VS.bg, border: `1px solid ${VS.border}` }}
-                      >
-                        <div className="relative shrink-0">
-                          <CollaboratorAvatar photoURL={u.photoURL} username={u.username} />
-                          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2" style={{ borderColor: VS.bg }} />
-                        </div>
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <span className="text-[12px] truncate leading-tight font-bold" style={{ color: VS.text }}>{u.username || "User"}</span>
-                          <span className="text-[10px] truncate leading-tight mt-0.5 font-mono" style={{ color: VS.textMuted }}>
-                            {u.activeFile ? `Editing ${u.activeFile.split('/').pop()}` : "Idle"}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              {/* ── AI ASSISTANT ── */}
-              {activePanel === "ai" && (
-                <RoomAIAssist
-                  code={code}
-                  language={language}
-                  activeFileName={activeFile}
-                  files={files}
-                  onApplyCode={handleApplyCodeSuggestion}
-                  selectedCode={selectedCode}
-                  roomTheme={roomTheme}
-                />
-              )}
-
-            </div>
-              {/* ── HORIZONTAL DRAG DIVIDER ── */}
-              <div
-                onMouseDown={onSidebarDividerMouseDown}
-                className="shrink-0 flex items-center justify-center"
-                style={{
-                  width: "5px",
-                  background: VS.border,
-                  cursor: "ew-resize",
-                  position: "relative",
-                  zIndex: 10,
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = VS.accent}
-                onMouseLeave={(e) => e.currentTarget.style.background = VS.border}
-                title="Drag to resize sidebar"
-              >
-                <div style={{ height: "40px", width: "2px", borderRadius: "1px", background: "inherit", opacity: 0.4 }} />
-              </div>
+                {activePanel === "history" && (
+                  <HistoryPanel roomId={roomId} refreshKey={historyKey} busyVersion={restoring}
+                    onCompare={(snap) => setCompare(snap)} onRestore={restoreVersion} />
+                )}
+              </aside>
+              <div className="room-divider-v" onMouseDown={onSidebarDividerMouseDown} role="separator" aria-orientation="vertical" title="Drag to resize" />
             </>
           )}
 
-          {/* ━━ EDITOR COLUMN ━━ */}
-          <div className="flex-1 min-w-0 flex flex-col overflow-hidden relative">
-
-            {openTabs.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center select-none px-6" style={{ background: VS.bg }}>
-                <div
-                  className="w-20 h-20 mb-6 rounded-2xl flex items-center justify-center text-white shrink-0 shadow-lg"
-                  style={{ background: "linear-gradient(135deg, #1e1b4b, #312e81)", border: "1px solid rgba(255,255,255,0.1)" }}
-                >
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m8 9 3 3-3 3m5 0h3M5 20h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2Z" />
-                  </svg>
-                </div>
-                <h2 className="text-xl font-bold mb-2 tracking-tight" style={{ color: VS.text }}>CodeFusionAI Workspace</h2>
-                <p className="text-[13px] max-w-sm text-center mb-8" style={{ color: VS.textMuted }}>Select a file from the explorer or create a new document to start coding synchronously.</p>
-                
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setNewItemModal({ parentPath: "", isFolder: false })}
-                    className="px-5 py-2.5 rounded-lg text-[13px] font-semibold text-white shadow-md active:scale-95 transition-all cursor-pointer"
-                    style={{ background: "linear-gradient(135deg, #4f46e5, #6366f1)" }}
-                  >
-                    + Create New File
-                  </button>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-5 py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-150 active:scale-95 cursor-pointer"
-                    style={{ background: VS.input, color: VS.text, border: `1px solid ${VS.border}` }}
-                  >
-                    Upload Folder
-                  </button>
+          <div className="room-center">
+            {compare ? (
+              <CompareView snapshot={compare} files={files} restoring={restoring != null} onClose={() => setCompare(null)} onRestore={restoreVersion} />
+            ) : openTabs.length === 0 ? (
+              <div className="room-welcome">
+                <span className="room-welcome-icon"><FilePlus2 size={26} /></span>
+                <h2>Open a file to start coding</h2>
+                <p>Pick a file in the explorer, or create one. Everyone in the room sees your changes live.</p>
+                <div className="room-welcome-actions">
+                  <button type="button" className="room-btn is-primary" onClick={() => setNewItemModal({ parentPath: "", isFolder: false })}><FilePlus2 size={14} /> New file</button>
+                  <button type="button" className="room-btn" onClick={() => fileInputRef.current?.click()}><Upload size={14} /> Upload folder</button>
                 </div>
               </div>
             ) : (
-              <div className="flex-1 flex flex-col min-h-0">
-                {/* ── TAB BAR ── */}
-                <div
-                  className="flex items-end overflow-x-auto shrink-0 select-none"
-                  style={{ background: VS.input, borderBottom: `1px solid ${VS.border}`, scrollbarWidth: "none", minHeight: "36px" }}
-                >
+              <div className="room-editor">
+                <div className="room-tabs" role="tablist" aria-label="Open files">
                   {openTabs.map((tab) => {
                     const isActive = tab === activeFile;
                     const fileItem = files.find((f) => f.path === tab);
-                    const fileColor = getFileColor(tab.split("/").pop());
                     return (
-                      <div
-                        key={tab}
-                        className="flex items-center gap-2 px-3.5 shrink-0 cursor-pointer group transition-all duration-150"
-                        style={{
-                          height: "36px",
-                          background: isActive ? VS.bg : "transparent",
-                          borderRight: `1px solid ${VS.border}`,
-                          borderTop: isActive ? `2px solid ${fileColor}` : "2px solid transparent",
-                          color: isActive ? VS.text : VS.textMuted,
-                          minWidth: "120px",
-                          maxWidth: "200px",
-                          boxShadow: isActive ? "0 -2px 8px rgba(0,0,0,0.03)" : "none",
-                        }}
+                      <div key={tab} role="tab" aria-selected={isActive} tabIndex={0} className={`room-tab ${isActive ? "is-active" : ""}`}
                         onClick={() => { if (fileItem) openFile(tab, fileItem.content); }}
-                      >
+                        onKeyDown={(e) => { if (e.key === "Enter" && fileItem) openFile(tab, fileItem.content); }}>
                         <FileIcon filename={tab.split("/").pop()} size={14} />
-                        <span className="text-[12px] truncate flex-1 font-medium">{tab.split("/").pop()}</span>
-                        <button
-                          onClick={(e) => closeTab(e, tab)}
-                          className="w-4 h-4 flex items-center justify-center rounded text-[11px] opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-500/20"
-                          style={{ color: VS.textMuted }}
-                        >
-                          ✕
-                        </button>
+                        <span>{tab.split("/").pop()}</span>
+                        <button type="button" onClick={(e) => closeTab(e, tab)} aria-label={`Close ${tab.split("/").pop()}`}><X size={12} /></button>
                       </div>
                     );
                   })}
-                </div>
-
-                {/* ── TOOLBAR ── */}
-                <div
-                  className="h-8 shrink-0 flex items-center justify-between px-3 gap-3 select-none"
-                  style={{ background: VS.sidebarBg, borderBottom: `1px solid ${VS.border}` }}
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium"
-                      style={{ color: VS.textMuted, border: `1px solid ${VS.border}`, background: VS.bg }}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: LANGUAGES.find(l => l.id === language)?.color || "#6366f1" }} />
-                      <span>{LANGUAGES.find(l => l.id === language)?.label || "Text"}</span>
-                    </div>
-
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {/* Run Code */}
-                    <button
-                      onClick={runCode}
-                      disabled={isRunning}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded text-[11px] font-semibold text-white transition-all shadow-xs active:scale-95 disabled:opacity-50 cursor-pointer"
-                      style={{
-                        background: isRunning ? "#334155" : "linear-gradient(135deg, #10b981, #059669)",
-                        boxShadow: isRunning ? "none" : "0 1px 3px rgba(16, 185, 129, 0.3)",
-                      }}
-                    >
-                      {isRunning ? (
-                        <>
-                          <svg className="w-3 h-3 animate-spin shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                          </svg>
-                          <span>Running...</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                            <polygon points="5 3 19 12 5 21 5 3" />
-                          </svg>
-                          <span>Run Code</span>
-                        </>
-                      )}
+                  <div className="room-tabs-actions">
+                    <button type="button" className="room-btn is-run" onClick={runCode} disabled={isRunning}>
+                      {isRunning ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} {isRunning ? "Running…" : "Run"}
                     </button>
-
-                    {/* Preview Toggle */}
-                    <button
-                      onClick={() => setIsPreviewOpen(!isPreviewOpen)}
-                      className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold rounded transition-all cursor-pointer"
-                      style={{
-                        background: isPreviewOpen ? "linear-gradient(135deg, #4f46e5, #6366f1)" : VS.bg,
-                        color: isPreviewOpen ? "#ffffff" : VS.textMuted,
-                        border: `1px solid ${isPreviewOpen ? "transparent" : VS.border}`,
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                        <line x1="9" y1="3" x2="9" y2="21" />
-                      </svg>
-                      <span>Preview</span>
+                    <button type="button" className={`room-btn ${isPreviewOpen ? "is-on" : ""}`} onClick={() => setIsPreviewOpen(!isPreviewOpen)} aria-pressed={isPreviewOpen}>
+                      <PanelRight size={13} /> Preview
                     </button>
                   </div>
                 </div>
 
-                {/* ── MONACO EDITOR ── */}
-                <div className="flex-1 min-h-0">
+                <div className="room-crumbs" aria-label="File path">
+                  {(activeFile || "").split("/").map((part, i, arr) => (
+                    <span key={i} className={i === arr.length - 1 ? "is-file" : ""}>
+                      {i === arr.length - 1 && <FileIcon filename={part} size={12} />}{part}
+                      {i < arr.length - 1 && <ChevronRight size={12} />}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="room-monaco">
                   <Editor
                     height="100%"
                     language={language}
-                    theme={roomTheme === "light" ? "vs" : "vs-dark"}
-                    value={code}
+                    theme={MONACO_THEME}
+                    beforeMount={defineMonacoTheme}
+                    path={activeFile || "untitled"}
+                    defaultValue={code}
                     onChange={handleCodeChange}
                     onMount={handleEditorMount}
                     options={{
                       fontSize: 14,
-                      fontFamily: "'Consolas', 'Courier New', monospace",
+                      fontFamily: "'JetBrains Mono', Consolas, monospace",
                       fontLigatures: true,
                       lineHeight: 22,
-                      minimap: { enabled: true, scale: 0.8 },
+                      minimap: { enabled: true, scale: 0.8, renderCharacters: false },
                       automaticLayout: true,
-                      padding: { top: 10 },
+                      padding: { top: 12 },
                       scrollBeyondLastLine: false,
                       smoothScrolling: true,
-                      cursorBlinking: "blink",
-                      renderLineHighlight: "line",
+                      cursorBlinking: "smooth",
+                      renderLineHighlight: "all",
                       bracketPairColorization: { enabled: true },
                       guides: { bracketPairs: true },
-                      scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+                      scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
                       overviewRulerLanes: 0,
+                      tabSize: 2,
                     }}
                   />
                 </div>
               </div>
             )}
 
-            {/* ── DRAG DIVIDER ── */}
-            <div
-              onMouseDown={onDividerMouseDown}
-              className="shrink-0 flex items-center justify-center"
-              style={{
-                height: "5px",
-                background: VS.border,
-                cursor: "ns-resize",
-                position: "relative",
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = VS.accent}
-              onMouseLeave={(e) => e.currentTarget.style.background = VS.border}
-              title="Drag to resize terminal"
-            >
-              <div style={{ width: "40px", height: "2px", borderRadius: "1px", background: "inherit", opacity: 0.4 }} />
-            </div>
-
-            {/* ── TERMINAL / OUTPUT ── */}
-            <div
-              className="shrink-0 flex flex-col"
-              style={{ height: `${terminalHeight}px`, background: "#0d1117" }}
-            >
-              {/* Output */}
-              <div className="flex-1 overflow-hidden min-h-0">
-                <TerminalComponent theme={roomTheme} />
-              </div>
-            </div>
+            {!bottomCollapsed && <div className="room-divider-h" onMouseDown={onDividerMouseDown} role="separator" aria-orientation="horizontal" title="Drag to resize" />}
+            <BottomPanel height={terminalHeight} problems={problems} output={output} onOpenProblem={openProblem}
+              collapsed={bottomCollapsed} onToggleCollapsed={() => setBottomCollapsed((v) => !v)} />
           </div>
 
-          {/* ━━ PREVIEW PANEL / RIGHT SIDE ━━ */}
           {isPreviewOpen && (
-            <>
-              {/* Divider for resizing preview */}
-              <div
-                onMouseDown={onPreviewDividerMouseDown}
-                className="flex items-center justify-center z-10"
-                style={{
-                  width: "5px",
-                  background: VS.border,
-                  cursor: "ew-resize",
-                  position: "relative",
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = VS.accent}
-                onMouseLeave={(e) => e.currentTarget.style.background = VS.border}
-                title="Drag to resize preview panel"
-              >
-                <div style={{ width: "2px", height: "40px", borderRadius: "1px", background: "inherit", opacity: 0.4 }} />
-              </div>
+            <PreviewPanel
+              url={previewUrl}
+              width={previewWidth}
+              isDragging={isDraggingPreviewState}
+              onDividerMouseDown={onPreviewDividerMouseDown}
+              onClose={() => setIsPreviewOpen(false)}
+            />
+          )}
 
-              <div className="shrink-0 flex flex-col" style={{ width: `${previewWidth}px`, background: VS.bg }}>
-                {/* Browser-Style Preview Header */}
-                <div className="h-9 shrink-0 flex items-center px-3 gap-2.5" style={{ borderBottom: `1px solid ${VS.border}`, background: VS.sidebarBg }}>
-                  {/* Traffic lights */}
-                  <div className="flex items-center gap-1.5 shrink-0 select-none">
-                    <div className="w-2.5 h-2.5 rounded-full bg-rose-400/80 cursor-pointer hover:opacity-100 transition-opacity" onClick={() => setIsPreviewOpen(false)} title="Close preview" />
-                    <div className="w-2.5 h-2.5 rounded-full bg-amber-400/80" />
-                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400/80" />
-                  </div>
-
-                  {/* Browser Address Bar */}
-                  <div className="flex-1 flex items-center gap-2 px-2.5 py-1 rounded-md text-[11px]" style={{ background: VS.bg, border: `1px solid ${VS.border}` }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: VS.textMuted }}>
-                      <circle cx="12" cy="12" r="10" />
-                      <line x1="2" y1="12" x2="22" y2="12" />
-                      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                    </svg>
-                    <span className="font-mono truncate flex-1" style={{ color: VS.text }}>{previewUrl || "http://localhost:5173"}</span>
-                  </div>
-
-                  {/* External Open & Close */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    {previewUrl && (
-                      <button onClick={() => window.open(previewUrl, "_blank")} title="Open in external browser window" className="p-1 rounded hover:opacity-80 transition-opacity" style={{ color: VS.textMuted }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                          <polyline points="15 3 21 3 21 9" />
-                          <line x1="10" y1="14" x2="21" y2="3" />
-                        </svg>
-                      </button>
-                    )}
-                    <button onClick={() => setIsPreviewOpen(false)} title="Close preview" className="p-1 rounded hover:opacity-80 transition-opacity" style={{ color: VS.textMuted }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-                <div className="flex-1 w-full h-full relative bg-white" style={{ pointerEvents: isDraggingPreviewState ? 'none' : 'auto' }}>
-                  {previewUrl ? (
-                    <iframe src={previewUrl} className="w-full h-full border-none" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" title="Live Preview" />
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-slate-500 text-xs font-medium" style={{ background: VS.bg }}>
-                      <div className="flex flex-col items-center gap-3">
-                        <svg className="w-6 h-6 text-slate-600 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                        Waiting for dev server...
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
+          {aiOpen && (
+            <AIPanel roomId={roomId} file={activeFile} language={language} code={code} selection={selectedCode} getContext={getEditorContext}
+              onApply={activeFile ? handleApplyCodeSuggestion : undefined} onClose={() => setAiOpen(false)} width={AI_WIDTH} />
           )}
         </div>
 
-        {/* ══ STATUS BAR ══ */}
-        <div
-          className="h-6 shrink-0 flex items-center justify-between px-3 select-none text-[11px] font-sans"
-          style={{
-            background: VS.input,
-            borderTop: `1px solid ${VS.border}`,
-            color: VS.textMuted,
-          }}
-        >
-          {/* Left – Git branch & Collaborator stack */}
-          <div className="flex items-center gap-3">
-            <div
-              className="flex items-center gap-1.5 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
-              style={{ color: "#6366f1" }}
-              title="Git Branch: main"
-            >
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
-                <circle cx="5" cy="4" r="2" stroke="currentColor" strokeWidth="1.4" />
-                <circle cx="11" cy="4" r="2" stroke="currentColor" strokeWidth="1.4" />
-                <circle cx="5" cy="12" r="2" stroke="currentColor" strokeWidth="1.4" />
-                <path d="M5 6v4M5 6c0 2 6 2 6-2" stroke="currentColor" strokeWidth="1.4" />
-              </svg>
-              <span className="font-semibold text-[11px]">main</span>
-            </div>
-
-            {/* Online users */}
-            <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "#10b981", boxShadow: "0 0 5px #10b981" }} />
-              <span className="font-semibold" style={{ color: "#10b981" }}>{users.length} online</span>
-            </div>
-          </div>
-
-          {/* Centre – Room ID */}
-          <div className="flex items-center gap-1.5" style={{ color: "var(--vs-accentPurple)" }}>
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="9" rx="1" stroke="currentColor" strokeWidth="1.3" fill="none" /><path d="M5 4V3a3 3 0 0 1 6 0v1" stroke="currentColor" strokeWidth="1.3" /></svg>
-            <span className="font-mono font-medium tracking-tight">Room: {roomId}</span>
-            <CopyRoomId roomId={roomId} />
-          </div>
-
-          {/* Right – Language, Files & S3 Sync */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded" style={{ color: VS.text }}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: LANGUAGES.find((l) => l.id === language)?.color || "#7d8590" }} />
-              <span className="font-medium">{LANGUAGES.find((l) => l.id === language)?.label || language}</span>
-            </div>
-            <span>UTF-8</span>
-            <span>CRLF</span>
-            <span>{files.filter(f => !f.isFolder).length} files</span>
-            
-            <div
-              className="flex items-center gap-1.5 cursor-pointer px-1.5 py-0.5 rounded transition-all hover:bg-slate-500/10"
-              onClick={forceFlushToS3}
-              title="Click to force flush Redis cache to AWS S3"
-            >
-              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: saveStatus === "saved" ? "#10b981" : saveStatus === "saving" ? "#6366f1" : "#f59e0b", boxShadow: saveStatus === "saved" ? "0 0 5px #10b981" : "0 0 5px #f59e0b" }} />
-              <span className="font-medium" style={{ color: saveStatus === "saved" ? "#10b981" : saveStatus === "saving" ? "#6366f1" : "#f59e0b" }}>
-                {saveStatus === "saved" ? "S3 Synced" : saveStatus === "saving" ? "S3 Saving..." : "S3 Unsaved"}
-              </span>
-            </div>
-          </div>
-        </div>
+        <StatusBar
+          users={users}
+          roomId={roomId}
+          language={language}
+          cursor={activeFile ? cursor : null}
+          connection={connection}
+          saveStatus={saveStatus}
+          onSave={forceFlushToS3}
+        />
 
         {/* ── CONTEXT MENU POPUP ── */}
         {contextMenu && (

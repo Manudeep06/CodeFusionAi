@@ -1,10 +1,12 @@
-﻿/**
+/**
  * INTERVIEW PREP NOTES:
  * This file lists the URLs for file operations (upload/download) and connects them to the file controller.
  */
 
 import express from "express";
 import validate from "../middleware/validate.js";
+import { requireAuth } from "../middleware/auth.js";
+import { rateLimit } from "../middleware/rateLimit.js";
 import {
   getUploadUrl,
   downloadFile,
@@ -16,6 +18,8 @@ import {
 } from "../controllers/file.controller.js";
 
 const router = express.Router();
+
+router.use(requireAuth, rateLimit({ name: "files", limit: 120, windowSec: 60 }));
 
 /**
  * File Routes

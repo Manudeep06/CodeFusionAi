@@ -1,407 +1,217 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Search, MoreHorizontal, ArrowUpRight, Copy, Power, RotateCcw, Trash2, Lock, Globe2, FolderOpen, Plus, TriangleAlert, RotateCw,
+} from "lucide-react";
+import { apiFetch } from "../../services/api";
+import { toast } from "../ui/toastStore";
+import { confirmDialog } from "../ui/confirmStore";
 import { useAuth } from "../../context/AuthContext";
+import Skeleton from "../ui/Skeleton";
+import { templateColor, timeAgo } from "../../lib/rooms";
+
+const FILTERS = [
+  { id: "all", label: "All" },
+  { id: "active", label: "Active" },
+  { id: "closed", label: "Closed" },
+  { id: "owned", label: "Owned" },
+  { id: "joined", label: "Shared with me" },
+];
+
+
+function RowMenu({ room, isOwner, onOpen, onClose, onResume, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+  const run = (fn) => (e) => { e.stopPropagation(); setOpen(false); fn(); };
+  return (
+    <div className="row-menu" ref={ref}>
+      <button type="button" className="app-icon-button" aria-label={`Actions for ${room.name}`} aria-haspopup="menu" aria-expanded={open}
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}>
+        <MoreHorizontal size={17} />
+      </button>
+      {open && (
+        <div className="row-menu-list" role="menu">
+          <button type="button" role="menuitem" onClick={run(onOpen)}><ArrowUpRight size={15} /> Open room</button>
+          <button type="button" role="menuitem" onClick={run(() => { navigator.clipboard.writeText(room.roomId); toast.success("Room ID copied."); })}><Copy size={15} /> Copy room ID</button>
+          {isOwner && (room.status === "closed"
+            ? <button type="button" role="menuitem" onClick={run(onResume)}><RotateCcw size={15} /> Reopen room</button>
+            : <button type="button" role="menuitem" onClick={run(onClose)}><Power size={15} /> Close room</button>)}
+          {isOwner && <button type="button" role="menuitem" className="is-danger" onClick={run(onDelete)}><Trash2 size={15} /> Delete room</button>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function SessionsTab({ handleJoinRoomShortcut, onCreateRoomClick }) {
   const { user } = useAuth();
-  const [sessions, setSessions] = useState([]);
+  const [view, setView] = useState("mine"); // mine | public
+  const [mine, setMine] = useState([]);
+  const [publicRooms, setPublicRooms] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  // Search and Filter State
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState("all"); // "all", "active", "closed", "owned", "joined"
-  const [openMenuRoomId, setOpenMenuRoomId] = useState(null);
-
-  // Sub-Tab Switcher State
-  const [subTab, setSubTab] = useState("my-sessions"); // "my-sessions" or "public-hub"
-
-  const baseUrl = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleOutsideClick = () => setOpenMenuRoomId(null);
-    window.addEventListener("click", handleOutsideClick);
-    return () => window.removeEventListener("click", handleOutsideClick);
-  }, []);
-
-  // Function to fetch all rooms based on selected sub-tab
-  const fetchSessions = async () => {
-    if (!user?.uid) return;
-    try {
-      setLoading(true);
-      const url = subTab === "my-sessions"
-        ? `${baseUrl}/api/rooms/user/${user.uid}`
-        : `${baseUrl}/api/rooms/public`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error("Failed to load sessions");
-      }
-      const data = await response.json();
-      setSessions(data);
-      setError(null);
-    } catch (err) {
-      console.error("Error fetching sessions:", err);
-      setError("Failed to load sessions. Please try again later.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [error, setError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    fetchSessions();
-  }, [user?.uid, subTab]);
-
-  // Handler to close a room (Owner only)
-  const handleCloseRoom = async (roomId) => {
     if (!user?.uid) return;
-    try {
-      const response = await fetch(`${baseUrl}/api/rooms/${roomId}/close`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.uid }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to close room");
+    let cancelled = false;
+    (async () => {
+      try {
+        const [m, p] = await Promise.all([apiFetch(`/api/rooms/user/${user.uid}`), apiFetch("/api/rooms/public")]);
+        if (!m.ok || !p.ok) throw new Error("Failed to load rooms");
+        const [mineData, publicData] = await Promise.all([m.json(), p.json()]);
+        if (cancelled) return;
+        setMine(mineData);
+        setPublicRooms(publicData);
+        setError(false);
+      } catch (err) {
+        console.error("Error fetching rooms:", err);
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      fetchSessions(); // Refresh list
-    } catch (err) {
-      alert(err.message);
-    }
-  };
+    })();
+    return () => { cancelled = true; };
+  }, [user?.uid, reloadKey]);
 
-  // Handler to reopen/resume a room (Owner only)
-  const handleResumeRoom = async (roomId) => {
-    if (!user?.uid) return;
+  const reload = () => setReloadKey((k) => k + 1);
+
+  const act = async (path, method, success) => {
     try {
-      const response = await fetch(`${baseUrl}/api/rooms/${roomId}/resume`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.uid }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to resume room");
-      }
-      fetchSessions(); // Refresh list
+      const res = await apiFetch(path, { method });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || "Request failed");
+      toast.success(success);
+      reload();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   };
 
-  // Handler to permanently delete a room (Owner only)
-  const handleDeleteRoom = async (roomId) => {
-    if (!user?.uid) return;
-    const confirmDelete = window.confirm("Are you sure you want to permanently delete this room? This action cannot be undone.");
-    if (!confirmDelete) return;
-
-    try {
-      const response = await fetch(`${baseUrl}/api/rooms/${roomId}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.uid }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to delete room");
-      }
-      fetchSessions(); // Refresh list
-    } catch (err) {
-      alert(err.message);
-    }
+  const closeRoom = (room) => act(`/api/rooms/${room.roomId}/close`, "POST", `"${room.name}" closed.`);
+  const resumeRoom = (room) => act(`/api/rooms/${room.roomId}/resume`, "POST", `"${room.name}" reopened.`);
+  const deleteRoom = async (room) => {
+    const ok = await confirmDialog({
+      title: `Delete "${room.name}"?`,
+      body: "The room, its files and its version history will be permanently deleted. This can't be undone.",
+      confirmLabel: "Delete room",
+      danger: true,
+    });
+    if (ok) act(`/api/rooms/${room.roomId}`, "DELETE", `"${room.name}" deleted.`);
   };
 
-  // Filter and Search computed list
-  const filteredSessions = sessions.filter((s) => {
-    const matchesSearch = 
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      s.roomId.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const isOwner = user?.uid === s.ownerId;
-    const isActive = s.status === "active";
-
-    if (activeFilter === "active") return matchesSearch && isActive;
-    if (activeFilter === "closed") return matchesSearch && !isActive;
-    if (activeFilter === "owned") return matchesSearch && isOwner;
-    if (activeFilter === "joined") return matchesSearch && !isOwner;
-    return matchesSearch;
-  });
-
-  // Get color configurations based on template type
-  const getTemplateTheme = (template) => {
-    const t = template?.toLowerCase() || "";
-    if (t === "react") {
-      return {
-        badge: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-        cardHover: "hover:border-cyan-500/35 hover:shadow-[0_0_40px_-10px_rgba(6,182,212,0.25)]",
-        line: "via-cyan-500/35",
-      };
-    }
-    if (t === "node" || t === "javascript") {
-      return {
-        badge: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-        cardHover: "hover:border-emerald-500/35 hover:shadow-[0_0_40px_-10px_rgba(16,185,129,0.25)]",
-        line: "via-emerald-500/35",
-      };
-    }
-    return {
-      badge: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-      cardHover: "hover:border-amber-500/35 hover:shadow-[0_0_40px_-10px_rgba(245,158,11,0.25)]",
-      line: "via-amber-500/35",
-    };
-  };
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = view === "mine" ? mine : publicRooms;
+    return list.filter((r) => {
+      const matches = !q || r.name?.toLowerCase().includes(q) || r.roomId.toLowerCase().includes(q) || r.description?.toLowerCase().includes(q);
+      if (!matches || view === "public") return matches;
+      const owner = r.ownerId === user?.uid;
+      if (filter === "active") return r.status !== "closed";
+      if (filter === "closed") return r.status === "closed";
+      if (filter === "owned") return owner;
+      if (filter === "joined") return !owner;
+      return true;
+    });
+  }, [view, mine, publicRooms, query, filter, user?.uid]);
 
   return (
-    <div className="animate-card-enter space-y-6">
-      {/* Header section */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--color-accent)]">Collaboration Hub</span>
-          <h2 className="text-2xl font-black text-[var(--color-ink)] mt-1 tracking-tight">Active Rooms & Sessions</h2>
-          <p className="text-xs text-[var(--color-ink-soft)] mt-1">Access your team's live environments or rejoin previous sessions.</p>
-        </div>
-        <button
-          onClick={onCreateRoomClick}
-          className="cf-primary-button flex items-center gap-2 py-2 px-5 text-xs transition duration-200 cursor-pointer shadow-sm animate-fade-in"
-        >
-          Create New Room
-        </button>
+    <div className="cf-rise">
+      <div className="tabs" role="tablist" aria-label="Room lists">
+        <button type="button" role="tab" aria-selected={view === "mine"} onClick={() => setView("mine")}>My rooms <em>{mine.length}</em></button>
+        <button type="button" role="tab" aria-selected={view === "public"} onClick={() => setView("public")}>Public hub <em>{publicRooms.length}</em></button>
       </div>
 
-      {/* Sub-Tab Navigation Switcher */}
-      <div className="flex items-center gap-5 border-b border-[var(--color-rule)] pb-3 mb-6">
-        <button
-          onClick={() => {
-            setSubTab("my-sessions");
-            setActiveFilter("all");
-          }}
-          className={`pb-2.5 text-xs font-black uppercase tracking-wider border-b-2 transition-all duration-150 cursor-pointer focus:outline-none ${
-            subTab === "my-sessions"
-              ? "border-[var(--color-accent)] text-[var(--color-accent)]"
-              : "border-transparent text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]"
-          }`}
-        >
-          My Sessions
-        </button>
-        <button
-          onClick={() => {
-            setSubTab("public-hub");
-            setActiveFilter("all");
-          }}
-          className={`pb-2.5 text-xs font-black uppercase tracking-wider border-b-2 transition-all duration-150 cursor-pointer focus:outline-none ${
-            subTab === "public-hub"
-              ? "border-[var(--color-accent)] text-[var(--color-accent)]"
-              : "border-transparent text-[var(--color-ink-soft)] hover:text-[var(--color-ink)]"
-          }`}
-        >
-          Public Hub
-        </button>
+      <div className="toolbar">
+        <label className="search-input">
+          <Search size={15} aria-hidden="true" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={view === "mine" ? "Search by name or room ID" : "Search public rooms"} aria-label="Search rooms" />
+        </label>
+        {view === "mine" && (
+          <div className="segmented-sm" role="group" aria-label="Filter rooms">
+            {FILTERS.map((f) => <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>{f.label}</button>)}
+          </div>
+        )}
       </div>
 
-      {/* Search and Filters bar */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-[var(--color-paper-muted)] border border-[var(--color-rule)] p-3 rounded-2xl">
-        {/* Search input */}
-        <div className="relative flex-1">
-          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--color-ink-soft)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            placeholder="Search by workspace name or ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-[var(--color-paper)] border border-[var(--color-rule)] rounded-xl text-xs text-[var(--color-ink)] placeholder-[var(--color-ink-soft)] focus:outline-none focus:border-[var(--color-accent)] focus:bg-[var(--color-paper-raised)] transition-all duration-200"
-          />
+      {error ? (
+        <div className="error-banner" role="alert">
+          <TriangleAlert size={18} /> We couldn't load rooms. Check that the API is running.
+          <button type="button" className="cf-secondary-button" onClick={() => { setLoading(true); reload(); }}><RotateCw size={14} /> Retry</button>
         </div>
-
-        {/* Filter buttons */}
-        <div className="flex flex-wrap items-center gap-1.5 bg-[var(--color-paper)] border border-[var(--color-rule)] p-1 rounded-xl">
-          {[
-            { id: "all", label: "All Sessions" },
-            { id: "active", label: "Active" },
-            { id: "closed", label: "Closed" },
-            ...(subTab === "my-sessions" ? [
-              { id: "owned", label: "Owned" },
-              { id: "joined", label: "Joined" }
-            ] : [])
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveFilter(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-150 cursor-pointer ${
-                activeFilter === tab.id
-                  ? "bg-[var(--color-accent)] text-[var(--color-accent-ink)] hover:opacity-90"
-                  : "text-[var(--color-ink-soft)] hover:text-[var(--color-ink)] hover:bg-[var(--color-paper-muted)]"
-              }`}
-            >
-              {tab.label}
-            </button>
+      ) : loading ? (
+        <div className="table-wrap" aria-busy="true">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} style={{ alignItems: "center", borderBottom: "1px solid var(--color-paper-sunken)", display: "flex", gap: "1rem", padding: "1rem 1.25rem" }}>
+              <Skeleton width="0.6rem" height="0.6rem" />
+              <div style={{ display: "grid", flex: 1, gap: "0.4rem" }}><Skeleton width="30%" /><Skeleton width="18%" height="0.7rem" /></div>
+              <Skeleton width="4rem" /><Skeleton width="5rem" />
+            </div>
           ))}
         </div>
-      </div>
-
-      {loading ? (
-        <div className="text-center text-[var(--color-ink-soft)] py-12 font-semibold text-sm">
-          Loading sessions...
+      ) : filtered.length === 0 ? (
+        <div className="cf-empty" style={{ padding: "3rem 1rem" }}>
+          {view === "mine" ? <FolderOpen size={24} /> : <Globe2 size={24} />}
+          <strong>
+            {query || filter !== "all" ? "No rooms match your filters" : view === "mine" ? "Create your first room" : "No public rooms yet"}
+          </strong>
+          <span>
+            {query || filter !== "all" ? "Try a different search or filter." : view === "mine" ? "Pick a template, invite your team and start coding together." : "Make one of your rooms public to list it here."}
+          </span>
+          {view === "mine" && !query && filter === "all" && (
+            <button type="button" className="cf-primary-button" style={{ marginTop: "0.75rem" }} onClick={onCreateRoomClick}><Plus size={15} /> New room</button>
+          )}
         </div>
-      ) : error ? (
-        <div className="text-center text-[var(--color-danger)] py-12 font-semibold text-sm">
-          {error}
-        </div>
-      ) : filteredSessions.length === 0 ? (
-        <div className="text-center text-[var(--color-ink-soft)] py-20 border border-dashed border-[var(--color-rule)] rounded-2xl bg-[var(--color-paper-raised)]">
-          <p className="text-sm font-semibold">No workspaces found</p>
-          <p className="text-xs text-[var(--color-ink-soft)] mt-1">Try adjusting your filters or search terms.</p>
+      ) : view === "mine" ? (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr><th>Name</th><th className="hide-sm">Template</th><th className="hide-sm">Access</th><th>Status</th><th className="hide-sm">Updated</th><th className="table-actions"><span className="sr-only">Actions</span></th></tr>
+            </thead>
+            <tbody>
+              {filtered.map((room) => {
+                const isOwner = room.ownerId === user?.uid;
+                return (
+                  <tr key={room.roomId} onClick={() => handleJoinRoomShortcut(room.roomId)}>
+                    <td>
+                      <div className="table-name">
+                        <i style={{ background: templateColor(room.template) || "var(--color-ink-ghost)" }} />
+                        <div>
+                          <strong>{room.name}</strong>
+                          <code>{room.roomId}{!isOwner && ` · by ${room.ownerName || "someone else"}`}</code>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="hide-sm"><span className="chip">{room.template || "custom"}</span></td>
+                    <td className="hide-sm"><span className="chip-access">{room.accessType === "public" ? <><Globe2 size={14} /> Public</> : <><Lock size={14} /> Private</>}</span></td>
+                    <td><span className={`status ${room.status === "closed" ? "is-closed" : "is-active"}`}>{room.status === "closed" ? "Closed" : "Active"}</span></td>
+                    <td className="table-muted hide-sm">{timeAgo(room.updatedAt)}</td>
+                    <td className="table-actions" onClick={(e) => e.stopPropagation()}>
+                      <RowMenu room={room} isOwner={isOwner} onOpen={() => handleJoinRoomShortcut(room.roomId)}
+                        onClose={() => closeRoom(room)} onResume={() => resumeRoom(room)} onDelete={() => deleteRoom(room)} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredSessions.map((s) => {
-            const isOwner = user?.uid === s.ownerId;
-            const isActive = s.status === "active";
-
-            return (
-              <div
-                key={s.roomId}
-                className="group relative rounded-2xl border border-[var(--color-rule)] bg-[var(--color-paper-raised)] p-5 transition-all duration-150 hover:-translate-y-[1px] active:translate-y-[0px] hover:border-[var(--color-accent)] hover:shadow-sm"
-              >
-                <div className="flex items-start justify-between mb-4">
-                  {/* Template badge */}
-                  <span className="text-[9px] font-bold uppercase tracking-wider border border-[var(--color-rule)] bg-[var(--color-paper-muted)] text-[var(--color-ink-soft)] px-2 py-0.5 rounded">
-                    {(s.template || "react").toUpperCase()}
-                  </span>
-                  
-                  {/* Status badge */}
-                  <span className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
-                    isActive 
-                      ? "bg-[color-mix(in_oklch,var(--color-success)_10%,transparent)] text-[var(--color-success)] border-[color-mix(in_oklch,var(--color-success)_20%,transparent)]" 
-                      : "bg-[color-mix(in_oklch,var(--color-danger)_10%,transparent)] text-[var(--color-danger)] border-[color-mix(in_oklch,var(--color-danger)_20%,transparent)]"
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-[var(--color-success)] animate-pulse" : "bg-[var(--color-danger)]"}`} />
-                    {s.status}
-                  </span>
-                </div>
-
-                {/* Title and 3-dots menu */}
-                <div className="flex items-start justify-between gap-3 relative">
-                  <div className="truncate flex-1">
-                    <h3 className="font-bold text-[var(--color-ink)] text-sm group-hover:text-[var(--color-accent)] transition duration-150 truncate">{s.name}</h3>
-                    <code className="block font-mono text-[10px] text-[var(--color-accent)] mt-1 select-all">{s.roomId}</code>
-                  </div>
-                  
-                  {/* Dropdown Menu */}
-                  <div className="relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenMenuRoomId(openMenuRoomId === s.roomId ? null : s.roomId);
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-[var(--color-paper-muted)] text-[var(--color-ink-soft)] hover:text-[var(--color-ink)] transition duration-150 cursor-pointer focus:outline-none"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                      </svg>
-                    </button>
-                    
-                    {openMenuRoomId === s.roomId && (
-                      <div className="absolute right-0 mt-1.5 w-40 rounded-xl border border-[var(--color-rule)] bg-[var(--color-paper-raised)] p-1 shadow-md z-50 animate-fade-in">
-                        {isActive ? (
-                          <>
-                            <button
-                              onClick={() => {
-                                handleJoinRoomShortcut(s.roomId);
-                                setOpenMenuRoomId(null);
-                              }}
-                              className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-[var(--color-ink)] hover:bg-[var(--color-paper-muted)] transition duration-150 cursor-pointer"
-                            >
-                              Join Session
-                            </button>
-                            {isOwner && (
-                              <>
-                                <button
-                                  onClick={() => {
-                                    handleCloseRoom(s.roomId);
-                                    setOpenMenuRoomId(null);
-                                  }}
-                                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-[var(--color-danger)] hover:bg-[color-mix(in_oklch,var(--color-danger)_8%,transparent)] transition duration-150 cursor-pointer"
-                                >
-                                  Close Room
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    handleDeleteRoom(s.roomId);
-                                    setOpenMenuRoomId(null);
-                                  }}
-                                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-[var(--color-danger)] hover:bg-[color-mix(in_oklch,var(--color-danger)_8%,transparent)] transition duration-150 cursor-pointer"
-                                >
-                                  Delete Room
-                                </button>
-                              </>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            {isOwner ? (
-                              <>
-                                <button
-                                  onClick={() => {
-                                    handleResumeRoom(s.roomId);
-                                    setOpenMenuRoomId(null);
-                                  }}
-                                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-[var(--color-success)] hover:bg-[color-mix(in_oklch,var(--color-success)_8%,transparent)] transition duration-150 cursor-pointer"
-                                >
-                                  Resume Room
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    handleDeleteRoom(s.roomId);
-                                    setOpenMenuRoomId(null);
-                                  }}
-                                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-[var(--color-danger)] hover:bg-[color-mix(in_oklch,var(--color-danger)_8%,transparent)] transition duration-150 cursor-pointer"
-                                >
-                                  Delete Room
-                                </button>
-                              </>
-                            ) : (
-                              <div className="px-3 py-2 text-[10px] text-[var(--color-ink-soft)] font-bold italic text-center">
-                                Closed by Owner
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Description for public rooms */}
-                {s.description && (
-                  <p className="text-[11px] text-[var(--color-ink-soft)] mt-2.5 line-clamp-2 italic bg-[var(--color-paper-muted)] border border-[var(--color-rule)] p-2 rounded-lg leading-relaxed">
-                    {s.description}
-                  </p>
-                )}
-
-                {/* Metadata sections */}
-                <div className="text-[11px] text-[var(--color-ink-soft)] space-y-1.5 mt-4 pt-3 border-t border-[var(--color-rule)]">
-                  <div className="flex justify-between">
-                    <span>Owner:</span>
-                    <span className="font-semibold text-[var(--color-ink)]">{isOwner ? "You" : s.ownerName}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Created:</span>
-                    <span className="text-[var(--color-ink-soft)]">
-                      {new Date(s.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} at {new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Last Active:</span>
-                    <span className="text-[var(--color-ink-soft)]">
-                      {new Date(s.lastActive).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} at {new Date(s.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="hub-grid">
+          {filtered.map((room) => (
+            <button type="button" key={room.roomId} className="hub-card" onClick={() => handleJoinRoomShortcut(room.roomId)}>
+              <header><h3>{room.name}</h3><span className="chip">{room.template || "custom"}</span></header>
+              <p>{room.description || "No description"}</p>
+              <footer><span>{room.ownerName || "Anonymous"}</span><span>{timeAgo(room.updatedAt)}</span></footer>
+            </button>
+          ))}
         </div>
       )}
     </div>

@@ -61,6 +61,30 @@ export const cacheWorkspace = async (roomId, files) => {
 };
 
 /**
+ * Replace the room's cached workspace with exactly `files`: upserts every file
+ * and removes hash fields for paths that no longer exist (deletes/renames).
+ * cacheWorkspace() alone only merges, which would resurrect deleted files.
+ *
+ * @param {string} roomId
+ * @param {Array|string} files
+ */
+export const replaceWorkspace = async (roomId, files) => {
+  try {
+    const parsed = typeof files === "string" ? JSON.parse(files) : files;
+    if (!Array.isArray(parsed)) return;
+    const hashKey = REDIS_KEYS.workspaceHash(roomId);
+    const keep = new Set(parsed.filter((f) => f.path).map((f) => encodeFilePath(f.path)));
+    const existing = await redisClient.hkeys(hashKey);
+    for (const field of existing) {
+      if (!keep.has(field)) await redisClient.hdel(hashKey, field);
+    }
+    await cacheWorkspace(roomId, parsed);
+  } catch (err) {
+    console.error(`[Redis] replaceWorkspace error for room ${roomId}:`, err.message);
+  }
+};
+
+/**
  * Update a SINGLE file in the workspace cache without touching other files.
  * Use this when only one file changed — avoids overwriting other concurrent edits.
  *

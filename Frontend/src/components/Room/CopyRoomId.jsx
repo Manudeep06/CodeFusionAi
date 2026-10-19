@@ -13,13 +13,13 @@ function CopyRoomId({ roomId }) {
       onClick={copy}
       title="Copy Room ID"
       className="flex items-center justify-center w-4 h-4 rounded transition-all duration-150"
-      style={{ color: copied ? "#3fb950" : "#7d8590" }}
-      onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "#a371f7"; }}
-      onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "#7d8590"; }}
+      style={{ color: copied ? "#16a34a" : "#64748b" }}
+      onMouseEnter={(e) => { if (!copied) e.currentTarget.style.color = "#4f46e5"; }}
+      onMouseLeave={(e) => { if (!copied) e.currentTarget.style.color = "#64748b"; }}
     >
       {copied ? (
         <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
-          <path d="M3 8l4 4 6-6" stroke="#3fb950" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M3 8l4 4 6-6" stroke="#16a34a" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       ) : (
         <svg width="10" height="10" viewBox="0 0 16 16" fill="none">
